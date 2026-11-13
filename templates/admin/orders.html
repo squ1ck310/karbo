@@ -1,0 +1,43 @@
+{% extends "admin/base.html" %}
+{% block title %}Замовлення{% endblock %}
+{% block content %}
+<div class="admin-head">
+  <h1>Замовлення</h1>
+  <nav class="filters">
+    <a class="filter" href="{{ url_for('admin.orders') }}" aria-selected="{{ 'true' if not active_status else 'false' }}">Усі</a>
+    {% for key, name in ORDER_STATUSES.items() %}
+      <a class="filter" href="{{ url_for('admin.orders', status=key) }}" aria-selected="{{ 'true' if key == active_status else 'false' }}">{{ name }}</a>
+    {% endfor %}
+  </nav>
+</div>
+
+{% for o in orders %}
+  <article class="panel order status-{{ o.status }}">
+    <div class="order-top">
+      <div>
+        <h2>№{{ o.id }} <span class="muted">{{ o.created_at.strftime('%d.%m.%Y %H:%M') }} UTC</span></h2>
+        <p><strong>{{ o.customer_name }}</strong>, <a href="tel:{{ o.phone }}">{{ o.phone }}</a></p>
+        <p>{{ o.city }}, {{ o.np_branch }}</p>
+        {% if o.comment %}<p class="muted">«{{ o.comment }}»</p>{% endif %}
+      </div>
+      <form method="post" action="{{ url_for('admin.order_status', order_id=o.id) }}" class="status-form">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <select name="status" onchange="this.form.submit()" aria-label="Статус замовлення">
+          {% for key, name in ORDER_STATUSES.items() %}
+            <option value="{{ key }}" {{ 'selected' if key == o.status }}>{{ name }}</option>
+          {% endfor %}
+        </select>
+        <noscript><button class="btn">Зберегти</button></noscript>
+      </form>
+    </div>
+    <table class="table">
+      {% for i in o.items %}
+        <tr><td>{{ i.product_name }}</td><td>{{ i.size }}</td><td>{{ i.qty }} × {{ format_price(i.price) }}</td></tr>
+      {% endfor %}
+      <tr class="total-row"><td colspan="2">Разом</td><td>{{ format_price(o.total) }}</td></tr>
+    </table>
+  </article>
+{% else %}
+  <p class="muted">Замовлень поки немає. Вони з'являться тут, щойно хтось оформить кошик на сайті.</p>
+{% endfor %}
+{% endblock %}

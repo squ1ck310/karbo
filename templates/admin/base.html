@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{% block title %}Адмінка{% endblock %} — LIZKA</title>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body class="admin">
+  {% if session.is_admin %}
+  <header class="header">
+    <a href="{{ url_for('admin.orders') }}" class="logo">LIZKA <small>адмінка</small></a>
+    <nav class="nav">
+      <a href="{{ url_for('admin.orders') }}">Замовлення</a>
+      <a href="{{ url_for('admin.products') }}">Товари</a>
+      <a href="{{ url_for('index') }}" target="_blank">Відкрити сайт</a>
+    </nav>
+    <form method="post" action="{{ url_for('admin.logout') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button class="cart-btn">Вийти</button>
+    </form>
+  </header>
+  {% endif %}
+
+  <main class="admin-main">
+    {% with messages = get_flashed_messages() %}
+      {% for m in messages %}<p class="flash">{{ m }}</p>{% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,5 +1,4 @@
-"""Дані товарів. Поки без бази даних — просто список у Python.
-Пізніше можна замінити на SQLite / PostgreSQL, інтерфейс функцій лишиться тим самим."""
+"""Категорії, стартові товари (заливаються в порожню базу) і хелпери для шаблонів."""
 
 from markupsafe import Markup
 
@@ -12,7 +11,7 @@ CATEGORIES = [
     {"id": "outer", "name": "Верхній одяг"},
 ]
 
-PRODUCTS = [
+SEED_PRODUCTS = [
     {"id": 1, "name": "Футболка оверсайз", "category": "tees", "price": 690, "shape": "tee",
      "color": "#F7F4FB", "bg": "#E4DCEF", "sizes": ["XS", "S", "M", "L", "XL"], "badge": "Хіт",
      "desc": "Щільна бавовна 220 г/м², вільний крій, не сідає після прання."},
@@ -45,17 +44,9 @@ PRODUCTS = [
      "desc": "Вільний жакет з підплечниками, вовна з поліестером."},
 ]
 
-_BY_ID = {p["id"]: p for p in PRODUCTS}
-
-
-def get_product(product_id: int):
-    return _BY_ID.get(product_id)
-
-
-def get_products(category: str = "all"):
-    if category == "all":
-        return PRODUCTS
-    return [p for p in PRODUCTS if p["category"] == category]
+CATEGORY_IDS = {c["id"] for c in CATEGORIES if c["id"] != "all"}
+CATEGORY_NAMES = {c["id"]: c["name"] for c in CATEGORIES}
+SHAPES = {"tee": "Футболка", "hoodie": "Худі", "pants": "Штани", "dress": "Сукня", "jacket": "Куртка"}
 
 
 def format_price(value: int) -> str:

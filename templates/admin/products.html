@@ -1,0 +1,25 @@
+{% extends "admin/base.html" %}
+{% block title %}Товари{% endblock %}
+{% block content %}
+<div class="admin-head">
+  <h1>Товари</h1>
+  <a class="btn btn-primary" href="{{ url_for('admin.product_form') }}">Додати товар</a>
+</div>
+<div class="panel table-wrap">
+  <table class="table">
+    <thead><tr><th></th><th>Назва</th><th>Категорія</th><th>Ціна</th><th>Розміри</th><th>На сайті</th></tr></thead>
+    <tbody>
+    {% for p in products %}
+      <tr class="{{ '' if p.is_active else 'inactive' }}">
+        <td><div class="thumb" style="background: {{ p.bg }}">{{ garment_svg(p.shape, p.color) }}</div></td>
+        <td><a href="{{ url_for('admin.product_form', product_id=p.id) }}">{{ p.name }}</a></td>
+        <td>{{ CATEGORY_NAMES.get(p.category, p.category) }}</td>
+        <td>{{ format_price(p.price) }}</td>
+        <td>{{ p.size_list|join(', ') }}</td>
+        <td>{{ 'Так' if p.is_active else 'Приховано' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
