@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}LIZKA — магазин одягу{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+  <header class="header">
+    <a href="{{ url_for('index') }}" class="logo">LIZKA</a>
+    <nav class="nav" aria-label="Головне меню">
+      <a href="{{ url_for('index') }}#catalog">Каталог</a>
+      <a href="{{ url_for('index') }}#about">Про нас</a>
+      <a href="#contacts">Контакти</a>
+    </nav>
+    <button class="cart-btn" id="cartOpen" aria-label="Відкрити кошик">
+      Кошик <span class="cart-count" id="cartCount">{{ cart_count|default(0) }}</span>
+    </button>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer" id="contacts">
+    <div>
+      <span class="logo">LIZKA</span>
+      <p>© 2026 LIZKA. Усі права захищені.</p>
+    </div>
+    <div class="footer-links">
+      <a href="#">Instagram</a>
+      <a href="#">Telegram</a>
+      <a href="mailto:hello@lizka.ua">hello@lizka.ua</a>
+    </div>
+  </footer>
+
+  <!-- Модалка товару -->
+  <div class="modal" id="productModal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="icon-btn modal-close" data-close aria-label="Закрити">✕</button>
+      <div class="modal-img" id="modalImg"></div>
+      <div class="modal-info">
+        <h3 id="modalTitle"></h3>
+        <p class="price" id="modalPrice"></p>
+        <p class="modal-desc" id="modalDesc"></p>
+        <p class="size-label">Розмір</p>
+        <div class="sizes" id="modalSizes"></div>
+        <button class="btn btn-primary" id="modalAdd">Додати в кошик</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Кошик -->
+  <aside class="drawer" id="cartDrawer" aria-label="Кошик" hidden>
+    <div class="drawer-backdrop" data-close-cart></div>
+    <div class="drawer-panel">
+      <div class="drawer-head">
+        <h3>Кошик</h3>
+        <button class="icon-btn" data-close-cart aria-label="Закрити кошик">✕</button>
+      </div>
+      <ul class="cart-list" id="cartList"></ul>
+      <div class="drawer-foot">
+        <div class="total"><span>Разом</span><strong id="cartTotal">0 ₴</strong></div>
+        <button class="btn btn-primary" id="checkoutBtn">Оформити замовлення</button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

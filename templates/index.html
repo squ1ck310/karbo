@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-text">
+    <h1>Одяг, який<br>хочеться носити щодня</h1>
+    <p>Базові речі з хорошої тканини. Відправляємо по Україні за 1–2 дні.</p>
+    <a href="#catalog" class="btn btn-primary">Дивитися каталог</a>
+  </div>
+  <div class="rack" aria-hidden="true">
+    <div class="rack-bar"></div>
+    <div class="rack-items">
+      {% for p in rack %}
+        <div class="hanger"><div class="hanger-hook"></div>{{ garment_svg(p.shape, p.color) }}</div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="catalog" id="catalog">
+  <div class="catalog-head">
+    <h2>Каталог</h2>
+    <nav class="filters" aria-label="Категорії">
+      {% for c in categories %}
+        <a class="filter" href="{{ url_for('index', cat=c.id) }}#catalog"
+           aria-selected="{{ 'true' if c.id == active_category else 'false' }}">{{ c.name }}</a>
+      {% endfor %}
+    </nav>
+  </div>
+
+  <div class="grid">
+    {% for p in products %}
+      <button class="card" data-id="{{ p.id }}">
+        <div class="card-img" style="background: {{ p.bg }}">
+          {% if p.badge %}<span class="badge">{{ p.badge }}</span>{% endif %}
+          {{ garment_svg(p.shape, p.color) }}
+        </div>
+        <div class="card-body">
+          <span class="card-name">{{ p.name }}</span>
+          <span class="card-price">{{ format_price(p.price) }}</span>
+        </div>
+      </button>
+    {% else %}
+      <p class="empty">У цій категорії поки порожньо.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="about" id="about">
+  <h2>Про нас</h2>
+  <p>LIZKA — невеликий бренд з України. Шиємо невеликими партіями, тому кожна річ проходить перевірку руками, а не тільки очима.</p>
+  <ul class="perks">
+    <li><strong>Обмін 14 днів</strong><span>Не підійшов розмір — поміняємо.</span></li>
+    <li><strong>Оплата при отриманні</strong><span>Нова Пошта або Укрпошта.</span></li>
+    <li><strong>Українське виробництво</strong><span>Цех у Харкові.</span></li>
+  </ul>
+</section>
+{% endblock %}
