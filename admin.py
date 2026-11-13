@@ -6,7 +6,9 @@ from functools import wraps
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
-from models import ORDER_STATUSES, Order, OrderItem, Product, db
+from images import ImageError, process_image
+from remote_images import RemoteImageError, inspect_remote_image, normalize_url
+from models import ORDER_STATUSES, Order, OrderItem, Product, ProductImage, db
 from products import CATEGORIES, CATEGORY_IDS, CATEGORY_NAMES, SHAPES
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -112,6 +114,56 @@ def fill_product(p, form):
     return errors
 
 
+MAX_PHOTOS = 10
+
+
+def add_photos(p, files):
+    """Обробляє завантажені фото й додає до товару. Повертає кількість доданих."""
+    files = [f for f in files if f and f.filename]
+    free = MAX_PHOTOS - len(p.images)
+    if len(files) > free:
+        flash(f"Можна мати до {MAX_PHOTOS} фото на товар. Зайві файли пропущено")
+        files = files[:max(free, 0)]
+    next_pos = max((img.position for img in p.images), default=-1) + 1
+    added = 0
+    for f in files:
+        try:
+            data, w, h = process_image(f)
+        except ImageError as e:
+            flash(str(e))
+            continue
+        p.images.append(ProductImage(data=data, width=w, height=h, size=len(data), position=next_pos))
+        next_pos += 1
+        added += 1
+    return added
+
+
+def add_photo_urls(p, text):
+    """Додає фото за посиланнями (по одному на рядок). Повертає кількість доданих."""
+    links = [line.strip() for line in text.splitlines() if line.strip()]
+    if not links:
+        return 0
+    free = MAX_PHOTOS - len(p.images)
+    if len(links) > free:
+        flash(f"Можна мати до {MAX_PHOTOS} фото на товар. Зайві посилання пропущено")
+        links = links[:max(free, 0)]
+    next_pos = max((img.position for img in p.images), default=-1) + 1
+    added = 0
+    for link in links:
+        try:
+            url = normalize_url(link)
+            w, h = inspect_remote_image(url)
+        except RemoteImageError as e:
+            flash(f"{link[:60]}: {e}")
+            continue
+        if w is None:
+            flash(f"{link[:60]}: сайт не дав серверу перевірити фото. Його додано, але переконайся, що воно відкривається")
+        p.images.append(ProductImage(url=url, width=w, height=h, size=0, position=next_pos))
+        next_pos += 1
+        added += 1
+    return added
+
+
 @admin_bp.route("/products/new", methods=["GET", "POST"])
 @admin_bp.route("/products/<int:product_id>", methods=["GET", "POST"])
 @login_required
@@ -126,8 +178,13 @@ def product_form(product_id=None):
                 flash(e)
         else:
             db.session.add(p)
+            added = add_photos(p, request.files.getlist("photos"))
+            added += add_photo_urls(p, request.form.get("photo_urls", ""))
             db.session.commit()
-            flash(f"Товар «{p.name}» збережено")
+            flash(f"Товар «{p.name}» збережено" + (f", додано фото: {added}" if added else ""))
+            # Після додавання фото лишаємось на сторінці товару, щоб їх одразу побачити
+            if any(f.filename for f in request.files.getlist("photos")) or request.form.get("photo_urls", "").strip():
+                return redirect(url_for("admin.product_form", product_id=p.id))
             return redirect(url_for("admin.products"))
     categories = [c for c in CATEGORIES if c["id"] != "all"]
     return render_template("admin/product_form.html", p=p, categories=categories, shapes=SHAPES)
@@ -145,3 +202,30 @@ def product_delete(product_id):
     db.session.commit()
     flash(f"Товар «{name}» видалено")
     return redirect(url_for("admin.products"))
+
+
+# ===== Фото товару =====
+def get_image(product_id, image_id):
+    img = db.session.get(ProductImage, image_id)
+    if not img or img.product_id != product_id:
+        abort(404)
+    return img
+
+
+@admin_bp.post("/products/<int:product_id>/images/<int:image_id>/delete")
+@login_required
+def image_delete(product_id, image_id):
+    db.session.delete(get_image(product_id, image_id))
+    db.session.commit()
+    flash("Фото видалено")
+    return redirect(url_for("admin.product_form", product_id=product_id))
+
+
+@admin_bp.post("/products/<int:product_id>/images/<int:image_id>/main")
+@login_required
+def image_make_main(product_id, image_id):
+    img = get_image(product_id, image_id)
+    img.position = min(i.position for i in img.product.images) - 1
+    db.session.commit()
+    flash("Головне фото змінено")
+    return redirect(url_for("admin.product_form", product_id=product_id))

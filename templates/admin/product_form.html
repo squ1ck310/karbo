@@ -5,8 +5,45 @@
   <h1>{{ p.name if p.id else 'Новий товар' }}</h1>
   <a href="{{ url_for('admin.products') }}">До списку товарів</a>
 </div>
-<form method="post" class="panel product-form">
+<form method="post" class="panel product-form" enctype="multipart/form-data">
   <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <section class="photos">
+    <h2>Фото</h2>
+    {% if p.images %}
+      <ul class="photo-list">
+        {% for img in p.images %}
+          <li class="photo">
+            <img src="{{ image_url(img) }}" alt="Фото {{ loop.index }}" loading="lazy" referrerpolicy="no-referrer">
+            {% if img.url %}<span class="photo-src" title="{{ img.url }}">посилання</span>{% endif %}
+            {% if loop.first %}
+              <span class="photo-main">Головне</span>
+            {% else %}
+              <button class="photo-btn" formnovalidate
+                      formaction="{{ url_for('admin.image_make_main', product_id=p.id, image_id=img.id) }}">Зробити головним</button>
+            {% endif %}
+            <button class="photo-btn photo-del" formnovalidate aria-label="Видалити фото {{ loop.index }}"
+                    formaction="{{ url_for('admin.image_delete', product_id=p.id, image_id=img.id) }}">✕</button>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Фото ще немає, тому на сайті показується силует. Перше фото стане головним у каталозі.</p>
+    {% endif %}
+
+    <label class="upload">
+      <input type="file" name="photos" id="photoInput" multiple accept="image/jpeg,image/png,image/webp">
+      <span class="upload-text"><strong>Обрати фото</strong> або перетягнути сюди<br>
+        <span class="muted">JPG, PNG або WebP, до 10 МБ кожне. Збережуться після «Зберегти товар»</span></span>
+    </label>
+    <ul class="photo-list photo-preview" id="photoPreview"></ul>
+
+    <label class="url-field">Або додати за посиланням (кожне з нового рядка)
+      <textarea name="photo_urls" rows="2" placeholder="https://imgur.com/abc1234&#10;https://i.imgur.com/xyz9876.jpg"></textarea>
+      <span class="muted">Підходить посилання на фото з Imgur або пряме посилання на картинку з будь-якого сайту.
+        Альбоми Imgur і prnt.sc не підходять.</span>
+    </label>
+  </section>
+
   <div class="form-grid">
     <label>Назва <input name="name" value="{{ p.name or '' }}" required maxlength="120"></label>
     <label>Категорія
@@ -17,7 +54,7 @@
     <label>Ціна, ₴ <input name="price" type="number" min="1" step="1" value="{{ p.price or '' }}" required></label>
     <label>Розміри через кому <input name="sizes" value="{{ p.sizes or '' }}" placeholder="XS,S,M,L" required></label>
     <label>Бейдж (необовʼязково) <input name="badge" value="{{ p.badge or '' }}" placeholder="Новинка" maxlength="30"></label>
-    <label>Силует
+    <label>Силует (якщо немає фото)
       <select name="shape">
         {% for key, name in shapes.items() %}<option value="{{ key }}" {{ 'selected' if key == p.shape }}>{{ name }}</option>{% endfor %}
       </select>

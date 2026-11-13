@@ -7,11 +7,11 @@ import os
 import re
 import secrets
 
-from flask import Flask, abort, jsonify, render_template, request, session
+from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, session
 
 from admin import admin_bp
-from models import Order, OrderItem, Product, db
-from products import CATEGORIES, SEED_PRODUCTS, format_price, garment_svg
+from models import Order, OrderItem, Product, ProductImage, db, migrate
+from products import CATEGORIES, SEED_PRODUCTS, format_price, garment_svg, image_url, product_media
 
 
 def database_url():
@@ -27,6 +27,7 @@ app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", "dev-change-me"),
     SQLALCHEMY_DATABASE_URI=database_url(),
     SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True},  # Render може перезапускати БД
+    MAX_CONTENT_LENGTH=60 * 1024 * 1024,                # загальний ліміт запиту (кілька фото разом)
 )
 # Render сам ставить змінну RENDER=true — там HTTPS, тож cookie тільки по HTTPS
 if os.environ.get("RENDER"):
@@ -34,13 +35,23 @@ if os.environ.get("RENDER"):
 
 db.init_app(app)
 app.register_blueprint(admin_bp)
-app.jinja_env.globals.update(garment_svg=garment_svg, format_price=format_price)
+app.jinja_env.globals.update(garment_svg=garment_svg, format_price=format_price, product_media=product_media, image_url=image_url)
+
+
+@app.errorhandler(413)
+def too_large(_e):
+    from flask import flash, redirect
+    if request.path.startswith("/admin"):
+        flash("Файли завеликі: разом можна завантажити до 60 МБ за раз")
+        return redirect(request.referrer or "/admin/products")
+    return json_error("Запит завеликий", 413)
 
 
 # ===== Створення таблиць і стартові товари =====
 def init_db():
     with app.app_context():
         db.create_all()
+        migrate(db.engine)
         if not db.session.query(Product.id).first():
             for p in SEED_PRODUCTS:
                 data = {k: v for k, v in p.items() if k != "id"}
@@ -92,7 +103,8 @@ def cart_payload():
     return {
         "items": [{
             "id": p.id, "name": p.name, "size": i["size"], "qty": i["qty"],
-            "price": format_price(p.price), "bg": p.bg, "svg": str(garment_svg(p.shape, p.color)),
+            "price": format_price(p.price), "bg": p.bg,
+            "media": str(product_media(p)), "has_photo": bool(p.main_image),
         } for i, p in lines],
         "count": sum(i["qty"] for i, _ in lines),
         "total": format_price(sum(i["qty"] * p.price for i, p in lines)),
@@ -141,7 +153,20 @@ def api_product(product_id):
     return jsonify({
         "id": p.id, "name": p.name, "desc": p.desc, "sizes": p.size_list, "bg": p.bg,
         "price_text": format_price(p.price), "svg": str(garment_svg(p.shape, p.color)),
+        "images": [image_url(img) for img in p.images],
     })
+
+
+@app.get("/img/<int:image_id>.webp")
+def product_image(image_id):
+    img = db.session.get(ProductImage, image_id) or abort(404)
+    if img.url:
+        return redirect(img.url)
+    resp = make_response(img.data)
+    resp.headers["Content-Type"] = img.mimetype
+    # Фото з певним id ніколи не змінюється, тож браузер може кешувати його назавжди
+    resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return resp
 
 
 @app.get("/api/cart")

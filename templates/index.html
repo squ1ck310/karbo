@@ -31,9 +31,9 @@
   <div class="grid">
     {% for p in products %}
       <button class="card" data-id="{{ p.id }}">
-        <div class="card-img" style="background: {{ p.bg }}">
+        <div class="card-img {{ 'has-photo' if p.main_image }}" style="background: {{ p.bg }}">
           {% if p.badge %}<span class="badge">{{ p.badge }}</span>{% endif %}
-          {{ garment_svg(p.shape, p.color) }}
+          {{ product_media(p) }}
         </div>
         <div class="card-body">
           <span class="card-name">{{ p.name }}</span>

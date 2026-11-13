@@ -32,8 +32,7 @@ document.querySelectorAll(".card").forEach((card) =>
 async function openModal(id) {
   product = await api(`/api/products/${id}`);
   selectedSize = null;
-  $("#modalImg").style.background = product.bg;
-  $("#modalImg").innerHTML = product.svg;
+  renderGallery(0);
   $("#modalTitle").textContent = product.name;
   $("#modalPrice").textContent = product.price_text;
   $("#modalDesc").textContent = product.desc;
@@ -44,6 +43,30 @@ async function openModal(id) {
   document.body.style.overflow = "hidden";
   $("#productModal .modal-close").focus();
 }
+function renderGallery(active) {
+  const imgBox = $("#modalImg");
+  const thumbs = $("#modalThumbs");
+  imgBox.style.background = product.bg;
+  if (!product.images.length) {
+    imgBox.classList.remove("has-photo");
+    imgBox.innerHTML = product.svg;
+    thumbs.innerHTML = "";
+    return;
+  }
+  imgBox.classList.add("has-photo");
+  imgBox.innerHTML = `<img src="${esc(product.images[active])}" referrerpolicy="no-referrer" alt="${esc(product.name)}, фото ${active + 1}">`;
+  thumbs.innerHTML = product.images.length > 1
+    ? product.images.map((src, i) => `
+        <button class="thumb-btn" data-i="${i}" aria-label="Фото ${i + 1}" aria-pressed="${i === active}">
+          <img src="${esc(src)}" referrerpolicy="no-referrer" alt="">
+        </button>`).join("")
+    : "";
+}
+$("#modalThumbs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".thumb-btn");
+  if (btn) renderGallery(Number(btn.dataset.i));
+});
+
 function closeModal() {
   $("#productModal").hidden = true;
   document.body.style.overflow = "";
@@ -73,7 +96,7 @@ function renderCart(cart) {
   $("#cartList").innerHTML = cart.items.length
     ? cart.items.map((i, idx) => `
       <li class="cart-item">
-        <div class="cart-thumb" style="background:${i.bg}">${i.svg}</div>
+        <div class="cart-thumb ${i.has_photo ? "has-photo" : ""}" style="background:${i.bg}">${i.media}</div>
         <div>
           <div class="cart-item-name">${esc(i.name)}</div>
           <div class="cart-item-meta">Розмір ${esc(i.size)} · ${esc(i.price)}</div>

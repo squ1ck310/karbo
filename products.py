@@ -1,6 +1,6 @@
 """Категорії, стартові товари (заливаються в порожню базу) і хелпери для шаблонів."""
 
-from markupsafe import Markup
+from markupsafe import Markup, escape
 
 CATEGORIES = [
     {"id": "all", "name": "Усе"},
@@ -69,3 +69,22 @@ def garment_svg(shape: str, color: str) -> Markup:
     }
     body = shapes.get(shape, shapes["tee"])
     return Markup(f'<svg viewBox="0 0 200 180" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">{body}</svg>')
+
+
+def image_url(image):
+    if image.url:
+        return image.url
+    from flask import url_for
+    return url_for("product_image", image_id=image.id)
+
+
+def product_media(p, lazy=True):
+    """Головне фото товару, а якщо фото немає — силует."""
+    img = p.main_image
+    if not img:
+        return garment_svg(p.shape, p.color)
+    loading = ' loading="lazy"' if lazy else ""
+    size = f' width="{img.width}" height="{img.height}"' if img.width and img.height else ""
+    return Markup(
+        f'<img src="{escape(image_url(img))}" alt="{escape(p.name)}"{size}{loading} referrerpolicy="no-referrer">'
+    )

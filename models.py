@@ -4,6 +4,7 @@
 from datetime import datetime, timezone
 
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import deferred
 
 db = SQLAlchemy()
 
@@ -30,9 +31,33 @@ class Product(db.Model):
     bg = db.Column(db.String(9), default="#ECE6F5")
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
+    images = db.relationship(
+        "ProductImage", backref="product", cascade="all, delete-orphan",
+        order_by="ProductImage.position, ProductImage.id",
+    )
+
     @property
     def size_list(self):
         return [s.strip() for s in (self.sizes or "").split(",") if s.strip()]
+
+    @property
+    def main_image(self):
+        """Перше фото — головне (показується в каталозі). None, якщо фото немає."""
+        return self.images[0] if self.images else None
+
+
+class ProductImage(db.Model):
+    """Фото товару: або файл у БД (диск Render не постійний), або зовнішнє посилання."""
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("product.id", ondelete="CASCADE"), nullable=False, index=True)
+    # deferred — самі байти вантажаться тільки коли їх реально віддаємо, а не при кожному списку товарів
+    data = deferred(db.Column(db.LargeBinary, nullable=False, default=b""))  # порожньо для фото за посиланням
+    url = db.Column(db.String(500))         # зовнішнє посилання (Imgur тощо); якщо є — data не використовується
+    mimetype = db.Column(db.String(30), nullable=False, default="image/webp")
+    width = db.Column(db.Integer)
+    height = db.Column(db.Integer)
+    size = db.Column(db.Integer)            # байти
+    position = db.Column(db.Integer, default=0, nullable=False)
 
 
 class Order(db.Model):
@@ -62,3 +87,14 @@ class OrderItem(db.Model):
     size = db.Column(db.String(10), nullable=False)
     price = db.Column(db.Integer, nullable=False)
     qty = db.Column(db.Integer, nullable=False)
+
+
+def migrate(engine):
+    """Мінімальні міграції для вже існуючих баз (create_all не додає колонки в старі таблиці)."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    if "product_image" in insp.get_table_names():
+        cols = {c["name"] for c in insp.get_columns("product_image")}
+        if "url" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE product_image ADD COLUMN url VARCHAR(500)"))
