@@ -7,7 +7,7 @@
 </div>
 <div class="panel table-wrap">
   <table class="table">
-    <thead><tr><th></th><th>Назва</th><th>Категорія</th><th>Ціна</th><th>Розміри</th><th>На сайті</th></tr></thead>
+    <thead><tr><th></th><th>Назва</th><th>Категорія</th><th>Ціна</th><th>Розміри</th><th>На сайті</th><th></th></tr></thead>
     <tbody>
     {% for p in products %}
       <tr class="{{ '' if p.is_active else 'inactive' }}">
@@ -17,6 +17,11 @@
         <td>{{ format_price(p.price) }}</td>
         <td>{{ p.size_list|join(', ') }}</td>
         <td>{{ 'Так' if p.is_active else 'Приховано' }}</td>
+        <td>
+          <button type="button" class="btn-danger btn-small"
+                  data-delete-url="{{ url_for('admin.product_delete', product_id=p.id) }}"
+                  data-delete-name="{{ p.name }}">Видалити</button>
+        </td>
       </tr>
     {% endfor %}
     </tbody>

@@ -27,6 +27,13 @@
     <label class="wide">Опис <textarea name="desc" rows="4">{{ p.desc or '' }}</textarea></label>
     <label class="check"><input type="checkbox" name="is_active" {{ 'checked' if p.is_active }}> Показувати на сайті</label>
   </div>
-  <button class="btn btn-primary">Зберегти товар</button>
+  <div class="form-actions">
+    <button class="btn btn-primary">Зберегти товар</button>
+    {% if p.id %}
+      <button type="button" class="btn-danger"
+              data-delete-url="{{ url_for('admin.product_delete', product_id=p.id) }}"
+              data-delete-name="{{ p.name }}">Видалити</button>
+    {% endif %}
+  </div>
 </form>
 {% endblock %}
