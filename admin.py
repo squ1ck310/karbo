@@ -6,7 +6,7 @@ from functools import wraps
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
-from models import ORDER_STATUSES, Order, Product, db
+from models import ORDER_STATUSES, Order, OrderItem, Product, db
 from products import CATEGORIES, CATEGORY_IDS, CATEGORY_NAMES, SHAPES
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -131,3 +131,17 @@ def product_form(product_id=None):
             return redirect(url_for("admin.products"))
     categories = [c for c in CATEGORIES if c["id"] != "all"]
     return render_template("admin/product_form.html", p=p, categories=categories, shapes=SHAPES)
+
+
+@admin_bp.post("/products/<int:product_id>/delete")
+@login_required
+def product_delete(product_id):
+    p = db.session.get(Product, product_id) or abort(404)
+    name = p.name
+    # У старих замовленнях назва й ціна товару вже збережені копією,
+    # тому просто відвʼязуємо їх від товару, а не видаляємо
+    OrderItem.query.filter_by(product_id=p.id).update({"product_id": None})
+    db.session.delete(p)
+    db.session.commit()
+    flash(f"Товар «{name}» видалено")
+    return redirect(url_for("admin.products"))

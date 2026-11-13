@@ -1,0 +1,63 @@
+/* Стилі адмінки поверх styles.css */
+.admin .logo small { font: 500 14px var(--font-body); color: var(--muted); margin-left: 6px; }
+.admin .header form { margin: 0; }
+.admin-main { max-width: var(--wrap); margin: 0 auto; padding: 16px 24px 80px; }
+.admin-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin: 16px 0 24px; }
+.admin-head h1 { font-size: 32px; }
+.panel { background: var(--surface); border-radius: 18px; padding: 24px; margin-bottom: 16px; }
+.muted { color: var(--muted); font-weight: 400; }
+.flash { background: var(--ink); color: #fff; padding: 12px 18px; border-radius: 12px; }
+
+.login { max-width: 380px; margin: 12vh auto 0; display: grid; gap: 20px; }
+.login h1 { font-size: 32px; }
+
+.order { border-left: 6px solid var(--lilac); }
+.order.status-new { border-left-color: var(--accent); }
+.order.status-done { border-left-color: #3BA776; }
+.order.status-cancelled { border-left-color: #A8A3B8; opacity: .75; }
+.order-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+.order h2 { font-size: 20px; margin-bottom: 8px; }
+.order h2 .muted { font: 400 14px var(--font-body); }
+.order p { margin: 2px 0; }
+
+.table-wrap { overflow-x: auto; padding: 8px 16px; }
+.table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.table th, .table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.table th { font-size: 13px; color: var(--muted); font-weight: 500; }
+.total-row td { font-weight: 700; border-bottom: 0; }
+.table tr.inactive { opacity: .5; }
+.thumb { width: 44px; height: 52px; border-radius: 8px; display: grid; place-items: center; padding: 6px; }
+
+label { display: grid; gap: 6px; font-weight: 500; font-size: 14px; }
+input, select, textarea {
+  font: 400 16px var(--font-body); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff;
+}
+input[type="color"] { padding: 2px; height: 44px; width: 100%; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 24px; }
+.form-grid .wide { grid-column: 1 / -1; }
+.check { display: flex; align-items: center; gap: 10px; }
+.check input { width: 20px; height: 20px; }
+@media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } }
+
+.btn-danger {
+  background: none; border: 1.5px solid #C0392B; color: #C0392B;
+  border-radius: 999px; padding: 13px 26px; font: 700 15px var(--font-body); cursor: pointer;
+}
+.btn-danger:hover { background: #C0392B; color: #fff; }
+.btn-small { padding: 6px 14px; font-size: 14px; font-weight: 500; }
+.form-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+/* Вікно підтвердження */
+.confirm {
+  border: 0; border-radius: 20px; padding: 28px; width: min(440px, 92vw);
+  color: var(--ink); box-shadow: 0 20px 60px rgba(35, 25, 66, .3);
+}
+.confirm::backdrop { background: rgba(35, 25, 66, .45); }
+.confirm[open] { animation: pop .18s ease; }
+.confirm h2 { font-size: 22px; margin-bottom: 12px; }
+.confirm p { margin: 0 0 12px; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.btn-ghost { background: var(--bg); color: var(--ink); }
+.btn-danger-solid { background: #C0392B; color: #fff; }
+.btn-danger-solid:hover { background: #A5301F; }
