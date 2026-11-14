@@ -36,12 +36,12 @@
   <dialog class="confirm" id="deleteDialog" aria-labelledby="deleteTitle">
     <form method="post" id="deleteForm">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-      <h2 id="deleteTitle">Видалити товар?</h2>
-      <p>«<strong id="deleteName"></strong>» зникне з сайту й адмінки назавжди. Це не можна скасувати.</p>
-      <p class="muted">Старі замовлення з цим товаром залишаться. Якщо товар може повернутися в продаж, краще зніми галочку «Показувати на сайті».</p>
+      <h2 id="deleteTitle"></h2>
+      <p id="deleteText"></p>
+      <p class="muted" id="deleteNote"></p>
       <div class="confirm-actions">
         <button type="button" class="btn btn-ghost" id="deleteCancel">Скасувати</button>
-        <button class="btn btn-danger-solid">Так, видалити</button>
+        <button class="btn btn-danger-solid" id="deleteConfirm">Так, видалити</button>
       </div>
     </form>
   </dialog>

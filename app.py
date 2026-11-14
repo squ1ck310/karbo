@@ -93,8 +93,11 @@ def cart_lines():
     lines = []
     for item in get_cart():
         p = db.session.get(Product, item["id"])
-        if p and p.is_active and item["size"] in p.size_list:
-            lines.append((item, p))
+        if not p or not p.is_active or item["size"] not in p.size_list:
+            continue
+        if p.is_printful and item["size"] not in p.printful_map:
+            continue
+        lines.append((item, p))
     return lines
 
 
@@ -107,6 +110,7 @@ def cart_payload():
             "media": str(product_media(p)), "has_photo": bool(p.main_image),
         } for i, p in lines],
         "count": sum(i["qty"] for i, _ in lines),
+        "needs_address": any(p.is_printful for _, p in lines),
         "total": format_price(sum(i["qty"] * p.price for i, p in lines)),
     }
 
@@ -217,6 +221,15 @@ def api_cart_update():
 
 
 PHONE_RE = re.compile(r"^\+?[\d\s\-()]{10,18}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Куди можна замовити товари Printful (Україна — лише з латвійської фабрики й не всі області)
+COUNTRIES = {
+    "UA": "Україна", "PL": "Польща", "DE": "Німеччина", "CZ": "Чехія", "SK": "Словаччина",
+    "LT": "Литва", "LV": "Латвія", "EE": "Естонія", "RO": "Румунія", "HU": "Угорщина",
+    "AT": "Австрія", "IT": "Італія", "ES": "Іспанія", "FR": "Франція", "NL": "Нідерланди",
+    "GB": "Велика Британія", "US": "США", "CA": "Канада",
+}
+app.jinja_env.globals["COUNTRIES"] = COUNTRIES
 
 
 @app.post("/api/checkout")
@@ -226,7 +239,9 @@ def api_checkout():
         return json_error("Кошик порожній")
 
     data = request.get_json(silent=True) or {}
-    form = {k: str(data.get(k, "")).strip() for k in ("name", "phone", "city", "branch", "comment")}
+    fields = ("name", "phone", "city", "branch", "comment", "email", "country", "address", "zip")
+    form = {k: str(data.get(k, "")).strip() for k in fields}
+    needs_address = any(p.is_printful for _, p in lines)
     errors = {}
     if len(form["name"]) < 2:
         errors["name"] = "Вкажіть ім'я та прізвище"
@@ -234,18 +249,36 @@ def api_checkout():
         errors["phone"] = "Вкажіть телефон у форматі +380..."
     if len(form["city"]) < 2:
         errors["city"] = "Вкажіть місто"
-    if not form["branch"]:
+    if needs_address:
+        # Товари Printful їдуть кур'єром на повну адресу, а не на відділення Нової Пошти
+        if form["country"] not in COUNTRIES:
+            errors["country"] = "Оберіть країну"
+        if len(form["address"]) < 5:
+            errors["address"] = "Вкажіть вулицю, будинок і квартиру"
+        if not re.fullmatch(r"[A-Za-z0-9 \-]{3,10}", form["zip"]):
+            errors["zip"] = "Вкажіть поштовий індекс"
+        if not EMAIL_RE.match(form["email"]):
+            errors["email"] = "Вкажіть email, туди прийде трек-номер"
+    elif not form["branch"]:
         errors["branch"] = "Вкажіть відділення Нової Пошти"
     if errors:
         return jsonify({"error": "Перевірте поля форми", "fields": errors}), 400
 
     order = Order(
         customer_name=form["name"][:120], phone=form["phone"][:30], city=form["city"][:80],
-        np_branch=form["branch"][:120], comment=form["comment"][:1000],
+        np_branch="" if needs_address else form["branch"][:120], comment=form["comment"][:1000],
         total=sum(i["qty"] * p.price for i, p in lines),
     )
+    if needs_address:
+        order.email = form["email"][:120]
+        order.country_code = form["country"]
+        order.address = form["address"][:200]
+        order.zip_code = form["zip"][:20]
     for i, p in lines:
-        order.items.append(OrderItem(product_id=p.id, product_name=p.name, size=i["size"], price=p.price, qty=i["qty"]))
+        order.items.append(OrderItem(
+            product_id=p.id, product_name=p.name, size=i["size"], price=p.price, qty=i["qty"],
+            printful_variant_id=p.printful_map.get(i["size"]) if p.is_printful else None,
+        ))
     db.session.add(order)
     db.session.commit()
 

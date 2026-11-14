@@ -2,7 +2,7 @@
 {% block title %}{{ p.name or 'Новий товар' }}{% endblock %}
 {% block content %}
 <div class="admin-head">
-  <h1>{{ p.name if p.id else 'Новий товар' }}</h1>
+  <h1>{{ p.name if p.id else 'Новий товар' }}{% if p.is_printful %} <span class="pf-tag">Printful</span>{% endif %}</h1>
   <a href="{{ url_for('admin.products') }}">До списку товарів</a>
 </div>
 <form method="post" class="panel product-form" enctype="multipart/form-data">
@@ -52,7 +52,12 @@
       </select>
     </label>
     <label>Ціна, ₴ <input name="price" type="number" min="1" step="1" value="{{ p.price or '' }}" required></label>
-    <label>Розміри через кому <input name="sizes" value="{{ p.sizes or '' }}" placeholder="XS,S,M,L" required></label>
+    {% if p.is_printful %}
+      <label>Розміри (з Printful) <input value="{{ p.size_list|join(', ') }}" readonly>
+        <span class="muted">Змінюються в Printful і підтягуються синхронізацією{% if p.printful_currency and p.printful_currency != 'UAH' %}. Ціни в Printful у {{ p.printful_currency }}, тут вкажи ціну в гривнях{% endif %}</span></label>
+    {% else %}
+      <label>Розміри через кому <input name="sizes" value="{{ p.sizes or '' }}" placeholder="XS,S,M,L" required></label>
+    {% endif %}
     <label>Бейдж (необовʼязково) <input name="badge" value="{{ p.badge or '' }}" placeholder="Новинка" maxlength="30"></label>
     <label>Силует (якщо немає фото)
       <select name="shape">

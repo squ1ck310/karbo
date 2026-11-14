@@ -11,13 +11,30 @@
   </nav>
 </div>
 
+{% if active_status == 'cancelled' and cancelled_count %}
+  <div class="purge-bar">
+    <p class="muted">Скасованих замовлень: {{ cancelled_count }}. Їх можна видалити, щоб не займали місце в базі.</p>
+    <button type="button" class="btn-danger"
+            data-delete-url="{{ url_for('admin.purge_cancelled') }}"
+            data-confirm-title="Очистити скасовані?"
+            data-confirm-text="Буде видалено скасованих замовлень: {{ cancelled_count }}. Це не можна скасувати."
+            data-confirm-note="Замовлення з інших статусів не зачіпаються."
+            data-confirm-button="Так, очистити">Очистити скасовані</button>
+  </div>
+{% endif %}
+
 {% for o in orders %}
   <article class="panel order status-{{ o.status }}">
     <div class="order-top">
       <div>
         <h2>№{{ o.id }} <span class="muted">{{ o.created_at.strftime('%d.%m.%Y %H:%M') }} UTC</span></h2>
         <p><strong>{{ o.customer_name }}</strong>, <a href="tel:{{ o.phone }}">{{ o.phone }}</a></p>
-        <p>{{ o.city }}, {{ o.np_branch }}</p>
+        {% if o.address %}
+          <p>{{ COUNTRIES.get(o.country_code, o.country_code) }}, {{ o.city }}, {{ o.address }}, {{ o.zip_code }}</p>
+          <p><a href="mailto:{{ o.email }}">{{ o.email }}</a></p>
+        {% else %}
+          <p>{{ o.city }}, {{ o.np_branch }}</p>
+        {% endif %}
         {% if o.comment %}<p class="muted">«{{ o.comment }}»</p>{% endif %}
       </div>
       <form method="post" action="{{ url_for('admin.order_status', order_id=o.id) }}" class="status-form">
@@ -30,9 +47,28 @@
         <noscript><button class="btn">Зберегти</button></noscript>
       </form>
     </div>
+    {% if o.printful_items %}
+      <div class="pf-box">
+        <span class="pf-tag">Printful</span>
+        {% if o.printful_order_id %}
+          <span>Замовлення в Printful №{{ o.printful_order_id }}, статус: <strong>{{ o.printful_status or '—' }}</strong></span>
+          <form method="post" action="{{ url_for('admin.order_printful_refresh', order_id=o.id) }}">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <button class="btn-small btn-ghost-sm">Оновити статус</button>
+          </form>
+        {% else %}
+          <span class="muted">Ще не відправлено в Printful.</span>
+          <form method="post" action="{{ url_for('admin.order_to_printful', order_id=o.id) }}">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <button class="btn-small btn-ghost-sm" {{ 'disabled' if not printful_ready }}>Створити чернетку в Printful</button>
+          </form>
+        {% endif %}
+        {% if o.printful_error %}<p class="pf-error">{{ o.printful_error }}</p>{% endif %}
+      </div>
+    {% endif %}
     <table class="table">
       {% for i in o.items %}
-        <tr><td>{{ i.product_name }}</td><td>{{ i.size }}</td><td>{{ i.qty }} × {{ format_price(i.price) }}</td></tr>
+        <tr><td>{{ i.product_name }}{% if i.printful_variant_id %} <span class="pf-tag">Printful</span>{% endif %}</td><td>{{ i.size }}</td><td>{{ i.qty }} × {{ format_price(i.price) }}</td></tr>
       {% endfor %}
       <tr class="total-row"><td colspan="2">Разом</td><td>{{ format_price(o.total) }}</td></tr>
     </table>

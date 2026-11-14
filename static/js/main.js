@@ -89,7 +89,11 @@ $("#modalAdd").addEventListener("click", async () => {
 $("#productModal").addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeModal(); });
 
 // ===== Кошик =====
+let needsAddress = false;
 function renderCart(cart) {
+  needsAddress = !!cart.needs_address;
+  $("[data-addr]").hidden = !needsAddress;
+  $("[data-np]").hidden = needsAddress;
   $("#cartCount").textContent = cart.count;
   $("#cartTotal").textContent = cart.total;
   $("#checkoutBtn").disabled = cart.count === 0;

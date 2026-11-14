@@ -1,6 +1,7 @@
 """Адмінка: /admin. Вхід за паролем зі змінної середовища ADMIN_PASSWORD."""
 
 import hmac
+import json
 import os
 from functools import wraps
 
@@ -10,6 +11,7 @@ from images import ImageError, process_image
 from remote_images import RemoteImageError, inspect_remote_image, normalize_url
 from models import ORDER_STATUSES, Order, OrderItem, Product, ProductImage, db
 from products import CATEGORIES, CATEGORY_IDS, CATEGORY_NAMES, SHAPES
+import printful
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -32,7 +34,8 @@ def login_required(view):
 
 @admin_bp.app_context_processor
 def admin_globals():
-    return {"CATEGORY_NAMES": CATEGORY_NAMES, "ORDER_STATUSES": ORDER_STATUSES}
+    return {"CATEGORY_NAMES": CATEGORY_NAMES, "ORDER_STATUSES": ORDER_STATUSES,
+            "printful_ready": printful.is_configured()}
 
 
 # ===== Вхід / вихід =====
@@ -63,7 +66,20 @@ def orders():
     query = Order.query.order_by(Order.created_at.desc())
     if status in ORDER_STATUSES:
         query = query.filter_by(status=status)
-    return render_template("admin/orders.html", orders=query.limit(200).all(), active_status=status)
+    cancelled_count = Order.query.filter_by(status="cancelled").count()
+    return render_template("admin/orders.html", orders=query.limit(200).all(), active_status=status,
+                           cancelled_count=cancelled_count)
+
+
+@admin_bp.post("/orders/purge-cancelled")
+@login_required
+def purge_cancelled():
+    ids = db.session.query(Order.id).filter_by(status="cancelled")
+    OrderItem.query.filter(OrderItem.order_id.in_(ids.scalar_subquery())).delete(synchronize_session=False)
+    deleted = Order.query.filter_by(status="cancelled").delete(synchronize_session=False)
+    db.session.commit()
+    flash(f"Видалено скасованих замовлень: {deleted}" if deleted else "Скасованих замовлень немає")
+    return redirect(url_for("admin.orders", status="cancelled"))
 
 
 @admin_bp.post("/orders/<int:order_id>/status")
@@ -91,7 +107,8 @@ def fill_product(p, form):
     p.name = form.get("name", "").strip()[:120]
     p.category = form.get("category", "")
     p.desc = form.get("desc", "").strip()
-    p.sizes = ",".join(s.strip() for s in form.get("sizes", "").split(",") if s.strip())
+    if not p.is_printful:   # розміри товарів Printful беруться з Printful, руками їх не міняємо
+        p.sizes = ",".join(s.strip() for s in form.get("sizes", "").split(",") if s.strip())
     p.badge = form.get("badge", "").strip()[:30]
     p.shape = form.get("shape", "tee")
     p.color = form.get("color", "#FFFFFF")
@@ -229,3 +246,102 @@ def image_make_main(product_id, image_id):
     db.session.commit()
     flash("Головне фото змінено")
     return redirect(url_for("admin.product_form", product_id=product_id))
+
+
+# ===== Printful =====
+@admin_bp.post("/printful/sync")
+@login_required
+def printful_sync():
+    """Підтягує товари з магазину Printful. Нові товари створюються прихованими,
+    щоб ти перевірив ціну в гривнях перед показом на сайті."""
+    try:
+        items = printful.list_sync_products()
+        created = updated = 0
+        seen = set()
+        for item in items:
+            if item.get("is_ignored"):
+                continue
+            data = printful.parse_product(printful.get_sync_product(item["id"]))
+            if not data["variants"]:
+                continue
+            seen.add(data["id"])
+            p = Product.query.filter_by(printful_id=data["id"]).first()
+            if p is None:
+                p = Product(
+                    name=data["name"][:120], category=data["category"], shape=data["shape"],
+                    color="#FFFFFF", bg="#ECE6F5", desc="", badge="", is_active=False,
+                    price=round(data["price"]) if data["currency"] == "UAH" else 0,
+                    fulfillment="printful", printful_id=data["id"],
+                )
+                db.session.add(p)
+                for pos, url in enumerate(data["previews"] or [data["thumbnail"]]):
+                    if url:
+                        p.images.append(ProductImage(url=url, size=0, position=pos))
+                created += 1
+            else:
+                updated += 1
+            # Розміри й відповідність варіантам оновлюємо завжди; назву, ціну, опис — не чіпаємо
+            p.sizes = ",".join(data["variants"])
+            p.printful_variants = json.dumps(data["variants"])
+            p.printful_currency = data["currency"]
+        # Товари, яких у Printful більше немає, ховаємо з сайту
+        gone = Product.query.filter(Product.fulfillment == "printful", Product.is_active.is_(True))
+        if seen:
+            gone = gone.filter(Product.printful_id.notin_(seen))
+        hidden = gone.update({"is_active": False}, synchronize_session=False)
+        db.session.commit()
+    except printful.PrintfulError as e:
+        db.session.rollback()
+        flash(str(e))
+        return redirect(url_for("admin.products"))
+    msg = f"Синхронізовано з Printful: нових {created}, оновлено {updated}"
+    if hidden:
+        msg += f", приховано (зникли з Printful) {hidden}"
+    flash(msg)
+    if created:
+        flash("Нові товари поки приховані: вкажи ціну в гривнях і постав галочку «Показувати на сайті»")
+    return redirect(url_for("admin.products"))
+
+
+@admin_bp.post("/orders/<int:order_id>/printful")
+@login_required
+def order_to_printful(order_id):
+    order = db.session.get(Order, order_id) or abort(404)
+    items = order.printful_items
+    if not items:
+        flash(f"У замовленні №{order.id} немає товарів Printful")
+    elif order.printful_order_id:
+        flash(f"Замовлення №{order.id} вже є в Printful")
+    elif not (order.address and order.country_code and order.zip_code):
+        flash(f"У замовленні №{order.id} немає повної адреси для Printful")
+    else:
+        try:
+            result = printful.create_draft_order(order, items)
+            order.printful_order_id = result.get("id")
+            order.printful_status = result.get("status", "draft")
+            order.printful_error = None
+            flash(f"Чернетку №{order.printful_order_id} створено в Printful. Підтверди її в кабінеті Printful, щоб пішла в друк")
+        except printful.PrintfulError as e:
+            order.printful_error = str(e)[:300]
+            flash(f"Не вдалося: {e}")
+        db.session.commit()
+    return redirect(request.referrer or url_for("admin.orders"))
+
+
+@admin_bp.post("/orders/<int:order_id>/printful/refresh")
+@login_required
+def order_printful_refresh(order_id):
+    order = db.session.get(Order, order_id) or abort(404)
+    try:
+        result = printful.get_order(f"lizka-{order.id}")
+        order.printful_order_id = result.get("id")
+        order.printful_status = result.get("status")
+        shipments = result.get("shipments") or []
+        tracks = [s.get("tracking_number") for s in shipments if s.get("tracking_number")]
+        if tracks and order.status in ("new", "confirmed"):
+            order.status = "shipped"
+        db.session.commit()
+        flash(f"Printful: статус «{order.printful_status}»" + (f", трек: {', '.join(tracks)}" if tracks else ""))
+    except printful.PrintfulError as e:
+        flash(str(e))
+    return redirect(request.referrer or url_for("admin.orders"))

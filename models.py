@@ -1,6 +1,7 @@
 """Моделі бази даних (SQLAlchemy).
 Локально — SQLite-файл instance/lizka.db, на Render — PostgreSQL (DATABASE_URL)."""
 
+import json
 from datetime import datetime, timezone
 
 from flask_sqlalchemy import SQLAlchemy
@@ -30,6 +31,11 @@ class Product(db.Model):
     color = db.Column(db.String(9), default="#FFFFFF")
     bg = db.Column(db.String(9), default="#ECE6F5")
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Printful: "own" — свій склад, "printful" — друкує й відправляє Printful
+    fulfillment = db.Column(db.String(10), default="own", nullable=False, server_default="own")
+    printful_id = db.Column(db.Integer, unique=True)          # id товару в магазині Printful (sync product)
+    printful_variants = db.Column(db.Text)                    # JSON {"M": sync_variant_id, ...}
+    printful_currency = db.Column(db.String(3))
 
     images = db.relationship(
         "ProductImage", backref="product", cascade="all, delete-orphan",
@@ -39,6 +45,17 @@ class Product(db.Model):
     @property
     def size_list(self):
         return [s.strip() for s in (self.sizes or "").split(",") if s.strip()]
+
+    @property
+    def is_printful(self):
+        return self.fulfillment == "printful"
+
+    @property
+    def printful_map(self):
+        try:
+            return json.loads(self.printful_variants or "{}")
+        except ValueError:
+            return {}
 
     @property
     def main_image(self):
@@ -70,12 +87,24 @@ class Order(db.Model):
     comment = db.Column(db.Text, default="")
     total = db.Column(db.Integer, nullable=False)
     status = db.Column(db.String(20), default="new", nullable=False, index=True)
+    # Повна адреса — потрібна для товарів Printful (вони їдуть не Новою Поштою)
+    email = db.Column(db.String(120))
+    country_code = db.Column(db.String(2))
+    address = db.Column(db.String(200))
+    zip_code = db.Column(db.String(20))
+    printful_order_id = db.Column(db.Integer)
+    printful_status = db.Column(db.String(30))
+    printful_error = db.Column(db.String(300))
 
     items = db.relationship("OrderItem", backref="order", cascade="all, delete-orphan", lazy="joined")
 
     @property
     def status_name(self):
         return ORDER_STATUSES.get(self.status, self.status)
+
+    @property
+    def printful_items(self):
+        return [i for i in self.items if i.printful_variant_id]
 
 
 class OrderItem(db.Model):
@@ -84,17 +113,33 @@ class OrderItem(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey("product.id"), nullable=True)
     # Назву й ціну копіюємо, щоб замовлення не змінювалось, якщо товар потім відредагують
     product_name = db.Column(db.String(120), nullable=False)
-    size = db.Column(db.String(10), nullable=False)
+    size = db.Column(db.String(40), nullable=False)          # "M" або "Black / M"
     price = db.Column(db.Integer, nullable=False)
     qty = db.Column(db.Integer, nullable=False)
+    printful_variant_id = db.Column(db.BigInteger)            # sync_variant_id, якщо товар з Printful
 
 
 def migrate(engine):
-    """Мінімальні міграції для вже існуючих баз (create_all не додає колонки в старі таблиці)."""
+    """Додає в уже існуючі таблиці колонки, яких там ще немає (create_all цього не робить).
+    Нові колонки мають бути nullable або з server_default."""
     from sqlalchemy import inspect, text
     insp = inspect(engine)
-    if "product_image" in insp.get_table_names():
-        cols = {c["name"] for c in insp.get_columns("product_image")}
-        if "url" not in cols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE product_image ADD COLUMN url VARCHAR(500)"))
+    existing_tables = set(insp.get_table_names())
+    quote = engine.dialect.identifier_preparer.quote
+    with engine.begin() as conn:
+        for table in db.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                ddl = f"ALTER TABLE {quote(table.name)} ADD COLUMN {quote(col.name)} {col.type.compile(dialect=engine.dialect)}"
+                if col.server_default is not None:
+                    ddl += f" DEFAULT '{col.server_default.arg}' NOT NULL"
+                conn.execute(text(ddl))
+        # Розширення колонок: PostgreSQL суворо перевіряє довжину рядка (SQLite — ні)
+        if engine.dialect.name == "postgresql" and "order_item" in existing_tables:
+            size_col = next(c for c in insp.get_columns("order_item") if c["name"] == "size")
+            if getattr(size_col["type"], "length", None) and size_col["type"].length < 40:
+                conn.execute(text("ALTER TABLE order_item ALTER COLUMN size TYPE VARCHAR(40)"))

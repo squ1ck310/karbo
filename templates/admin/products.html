@@ -3,8 +3,18 @@
 {% block content %}
 <div class="admin-head">
   <h1>Товари</h1>
-  <a class="btn btn-primary" href="{{ url_for('admin.product_form') }}">Додати товар</a>
+  <div class="head-actions">
+    <form method="post" action="{{ url_for('admin.printful_sync') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button class="btn btn-ghost" {{ 'disabled' if not printful_ready }}
+              title="{{ '' if printful_ready else 'Задай PRINTFUL_TOKEN у змінних середовища' }}">Синхронізувати з Printful</button>
+    </form>
+    <a class="btn btn-primary" href="{{ url_for('admin.product_form') }}">Додати товар</a>
+  </div>
 </div>
+{% if not printful_ready %}
+  <p class="muted">Щоб підключити Printful, додай змінну середовища <code>PRINTFUL_TOKEN</code> (на Render: сервіс → Environment).</p>
+{% endif %}
 <div class="panel table-wrap">
   <table class="table">
     <thead><tr><th></th><th>Назва</th><th>Категорія</th><th>Ціна</th><th>Розміри</th><th>На сайті</th><th></th></tr></thead>
@@ -12,7 +22,7 @@
     {% for p in products %}
       <tr class="{{ '' if p.is_active else 'inactive' }}">
         <td><div class="thumb {{ 'has-photo' if p.main_image }}" style="background: {{ p.bg }}">{{ product_media(p) }}</div></td>
-        <td><a href="{{ url_for('admin.product_form', product_id=p.id) }}">{{ p.name }}</a></td>
+        <td><a href="{{ url_for('admin.product_form', product_id=p.id) }}">{{ p.name }}</a>{% if p.is_printful %} <span class="pf-tag">Printful</span>{% endif %}</td>
         <td>{{ CATEGORY_NAMES.get(p.category, p.category) }}</td>
         <td>{{ format_price(p.price) }}</td>
         <td>{{ p.size_list|join(', ') }}</td>
