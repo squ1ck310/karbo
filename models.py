@@ -121,25 +121,41 @@ class OrderItem(db.Model):
 
 def migrate(engine):
     """Додає в уже існуючі таблиці колонки, яких там ще немає (create_all цього не робить).
-    Нові колонки мають бути nullable або з server_default."""
+    Нові колонки мають бути nullable або з server_default.
+
+    Спершу читаємо ВСЮ структуру, і лише потім змінюємо таблиці однією транзакцією:
+    у PostgreSQL читання структури таблиці, яку ця ж міграція вже заблокувала через
+    ALTER TABLE, чекало б саме себе вічно."""
     from sqlalchemy import inspect, text
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
+    columns = {t: {c["name"]: c for c in insp.get_columns(t)} for t in existing_tables}
     quote = engine.dialect.identifier_preparer.quote
-    with engine.begin() as conn:
-        for table in db.metadata.sorted_tables:
-            if table.name not in existing_tables:
+    is_pg = engine.dialect.name == "postgresql"
+
+    statements = []
+    for table in db.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        have = columns[table.name]
+        for col in table.columns:
+            if col.name in have:
                 continue
-            have = {c["name"] for c in insp.get_columns(table.name)}
-            for col in table.columns:
-                if col.name in have:
-                    continue
-                ddl = f"ALTER TABLE {quote(table.name)} ADD COLUMN {quote(col.name)} {col.type.compile(dialect=engine.dialect)}"
-                if col.server_default is not None:
-                    ddl += f" DEFAULT '{col.server_default.arg}' NOT NULL"
-                conn.execute(text(ddl))
-        # Розширення колонок: PostgreSQL суворо перевіряє довжину рядка (SQLite — ні)
-        if engine.dialect.name == "postgresql" and "order_item" in existing_tables:
-            size_col = next(c for c in insp.get_columns("order_item") if c["name"] == "size")
-            if getattr(size_col["type"], "length", None) and size_col["type"].length < 40:
-                conn.execute(text("ALTER TABLE order_item ALTER COLUMN size TYPE VARCHAR(40)"))
+            ddl = f"ALTER TABLE {quote(table.name)} ADD COLUMN {quote(col.name)} {col.type.compile(dialect=engine.dialect)}"
+            if col.server_default is not None:
+                ddl += f" DEFAULT '{col.server_default.arg}' NOT NULL"
+            statements.append(ddl)
+    # PostgreSQL суворо перевіряє довжину рядка (SQLite — ні), тож розширюємо колонку розміру
+    size_col = columns.get("order_item", {}).get("size")
+    if is_pg and size_col is not None and (getattr(size_col["type"], "length", None) or 40) < 40:
+        statements.append('ALTER TABLE order_item ALTER COLUMN size TYPE VARCHAR(40)')
+
+    if not statements:
+        return
+    with engine.begin() as conn:
+        if is_pg:
+            # Якщо таблицю тримає інший процес (наприклад, стара версія сайту під час деплою),
+            # краще впасти з помилкою за 15 с, ніж висіти безкінечно
+            conn.execute(text("SET LOCAL lock_timeout = '15s'"))
+        for ddl in statements:
+            conn.execute(text(ddl))
