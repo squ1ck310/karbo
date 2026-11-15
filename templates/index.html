@@ -1,29 +1,19 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero">
-  <div class="hero-text">
-    <h1>Одяг, який<br>хочеться носити щодня</h1>
-    <p>Базові речі з хорошої тканини. Відправляємо по Україні за 1–2 дні.</p>
-    <a href="#catalog" class="btn btn-primary">Дивитися каталог</a>
-  </div>
-  <div class="rack" aria-hidden="true">
-    <div class="rack-bar"></div>
-    <div class="rack-items">
-      {% for p in rack %}
-        <div class="hanger"><div class="hanger-hook"></div>{{ garment_svg(p.shape, p.color) }}</div>
-      {% endfor %}
-    </div>
-  </div>
-</section>
+<div class="hero">
+  <svg viewBox="0 0 520 244" role="img" aria-label="KARBO"><use href="#logo" width="520" height="244"/></svg>
+  <p>Вугілля, терни й чорнило. Друкуємо під замовлення, доставляємо по всьому світу.</p>
+  <a class="btn" href="#shop">До дропу</a>
+</div>
+<div class="teeth" aria-hidden="true"></div>
 
-<section class="catalog" id="catalog">
-  <div class="catalog-head">
-    <h2>Каталог</h2>
-    <nav class="filters" aria-label="Категорії">
+<section id="shop">
+  <div class="head">
+    <h2>Нові принти</h2>
+    <nav class="tabs" aria-label="Категорії">
       {% for c in categories %}
-        <a class="filter" href="{{ url_for('index', cat=c.id) }}#catalog"
-           aria-selected="{{ 'true' if c.id == active_category else 'false' }}">{{ c.name }}</a>
+        <a href="{{ url_for('index', cat=c.id) }}#shop" aria-current="{{ 'true' if c.id == active_category else 'false' }}">{{ c.name }}</a>
       {% endfor %}
     </nav>
   </div>
@@ -31,14 +21,12 @@
   <div class="grid">
     {% for p in products %}
       <button class="card" data-id="{{ p.id }}">
-        <div class="card-img {{ 'has-photo' if p.main_image }}" style="background: {{ p.bg }}">
+        <div class="ph">
           {% if p.badge %}<span class="badge">{{ p.badge }}</span>{% endif %}
-          {{ product_media(p) }}
+          {% if p.main_image %}{{ product_media(p) }}{% else %}<span class="ph-k" aria-hidden="true">K</span>{% endif %}
         </div>
-        <div class="card-body">
-          <span class="card-name">{{ p.name }}</span>
-          <span class="card-price">{{ format_price(p.price) }}</span>
-        </div>
+        <b>{{ p.name }}</b>
+        <i>{{ format_price(p.price) }}</i>
       </button>
     {% else %}
       <p class="empty">У цій категорії поки порожньо.</p>
@@ -46,13 +34,8 @@
   </div>
 </section>
 
-<section class="about" id="about">
-  <h2>Про нас</h2>
-  <p>LIZKA — невеликий бренд з України. Шиємо невеликими партіями, тому кожна річ проходить перевірку руками, а не тільки очима.</p>
-  <ul class="perks">
-    <li><strong>Обмін 14 днів</strong><span>Не підійшов розмір — поміняємо.</span></li>
-    <li><strong>Оплата при отриманні</strong><span>Нова Пошта або Укрпошта.</span></li>
-    <li><strong>Українське виробництво</strong><span>Цех у Харкові.</span></li>
-  </ul>
+<section id="about" class="light">
+  <h2>Під замовлення</h2>
+  <p>Кожна річ друкується після того, як ти її замовив. Без складів, без відходів, і ні в кого більше немає такого самого принта.</p>
 </section>
 {% endblock %}

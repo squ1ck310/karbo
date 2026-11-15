@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>{% block title %}Адмінка{% endblock %} — LIZKA</title>
+  <title>{% block title %}Адмінка{% endblock %} — Karbo</title>
   <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
@@ -12,7 +12,7 @@
 <body class="admin">
   {% if session.is_admin %}
   <header class="header">
-    <a href="{{ url_for('admin.orders') }}" class="logo">LIZKA <small>адмінка</small></a>
+    <a href="{{ url_for('admin.orders') }}" class="logo">Karbo <small>адмінка</small></a>
     <nav class="nav">
       <a href="{{ url_for('admin.orders') }}">Замовлення</a>
       <a href="{{ url_for('admin.products') }}">Товари</a>

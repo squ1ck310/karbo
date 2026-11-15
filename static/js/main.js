@@ -46,10 +46,9 @@ async function openModal(id) {
 function renderGallery(active) {
   const imgBox = $("#modalImg");
   const thumbs = $("#modalThumbs");
-  imgBox.style.background = product.bg;
   if (!product.images.length) {
     imgBox.classList.remove("has-photo");
-    imgBox.innerHTML = product.svg;
+    imgBox.innerHTML = '<span class="ph-k" aria-hidden="true">K</span>';
     thumbs.innerHTML = "";
     return;
   }
@@ -100,7 +99,7 @@ function renderCart(cart) {
   $("#cartList").innerHTML = cart.items.length
     ? cart.items.map((i, idx) => `
       <li class="cart-item">
-        <div class="cart-thumb ${i.has_photo ? "has-photo" : ""}" style="background:${i.bg}">${i.media}</div>
+        <div class="cart-thumb ${i.has_photo ? "has-photo" : ""}">${i.has_photo ? i.media : '<span class="ph-k" aria-hidden="true">K</span>'}</div>
         <div>
           <div class="cart-item-name">${esc(i.name)}</div>
           <div class="cart-item-meta">Розмір ${esc(i.size)} · ${esc(i.price)}</div>
