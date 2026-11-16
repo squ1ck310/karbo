@@ -51,10 +51,17 @@
         {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if c.id == p.category }}>{{ c.name }}</option>{% endfor %}
       </select>
     </label>
-    <label>Ціна, ₴ <input name="price" type="number" min="1" step="1" value="{{ p.price or '' }}" required></label>
+    <label>Ціна
+      <span class="price-row">
+        <input name="price" type="number" min="1" step="1" value="{{ p.price or '' }}" required>
+        <select name="currency" aria-label="Валюта">
+          {% for code, name in CURRENCIES.items() %}<option value="{{ code }}" {{ 'selected' if code == (p.currency or 'UAH') }}>{{ name }}</option>{% endfor %}
+        </select>
+      </span>
+    </label>
     {% if p.is_printful %}
       <label>Розміри (з Printful) <input value="{{ p.size_list|join(', ') }}" readonly>
-        <span class="muted">Змінюються в Printful і підтягуються синхронізацією{% if p.printful_currency and p.printful_currency != 'UAH' %}. Ціни в Printful у {{ p.printful_currency }}, тут вкажи ціну в гривнях{% endif %}</span></label>
+        <span class="muted">Змінюються в Printful і підтягуються синхронізацією</span></label>
     {% else %}
       <label>Розміри через кому <input name="sizes" value="{{ p.sizes or '' }}" placeholder="XS,S,M,L" required></label>
     {% endif %}

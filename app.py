@@ -11,7 +11,7 @@ from flask import Flask, abort, jsonify, make_response, redirect, render_templat
 
 from admin import admin_bp
 from models import Order, OrderItem, Product, ProductImage, db, migrate
-from products import CATEGORIES, SEED_PRODUCTS, format_price, garment_svg, image_url, product_media
+from products import CATEGORIES, CURRENCIES, SEED_PRODUCTS, format_price, format_totals, garment_svg, image_url, product_media, sum_by_currency
 
 
 def database_url():
@@ -35,7 +35,8 @@ if os.environ.get("RENDER"):
 
 db.init_app(app)
 app.register_blueprint(admin_bp)
-app.jinja_env.globals.update(garment_svg=garment_svg, format_price=format_price, product_media=product_media, image_url=image_url)
+app.jinja_env.globals.update(garment_svg=garment_svg, format_price=format_price, format_totals=format_totals,
+                              product_media=product_media, image_url=image_url, CURRENCIES=CURRENCIES)
 
 
 @app.errorhandler(413)
@@ -106,12 +107,12 @@ def cart_payload():
     return {
         "items": [{
             "id": p.id, "name": p.name, "size": i["size"], "qty": i["qty"],
-            "price": format_price(p.price), "bg": p.bg,
+            "price": format_price(p.price, p.currency), "bg": p.bg,
             "media": str(product_media(p)), "has_photo": bool(p.main_image),
         } for i, p in lines],
         "count": sum(i["qty"] for i, _ in lines),
         "needs_address": any(p.is_printful for _, p in lines),
-        "total": format_price(sum(i["qty"] * p.price for i, p in lines)),
+        "total": format_totals(sum_by_currency((i["qty"] * p.price, p.currency) for i, p in lines)),
     }
 
 
@@ -156,7 +157,7 @@ def api_product(product_id):
         abort(404)
     return jsonify({
         "id": p.id, "name": p.name, "desc": p.desc, "sizes": p.size_list, "bg": p.bg,
-        "price_text": format_price(p.price), "svg": str(garment_svg(p.shape, p.color)),
+        "price_text": format_price(p.price, p.currency), "svg": str(garment_svg(p.shape, p.color)),
         "images": [image_url(img) for img in p.images],
     })
 
@@ -267,6 +268,7 @@ def api_checkout():
     order = Order(
         customer_name=form["name"][:120], phone=form["phone"][:30], city=form["city"][:80],
         np_branch="" if needs_address else form["branch"][:120], comment=form["comment"][:1000],
+        # total — сума, якщо всі товари в одній валюті; для змішаних дивись order.totals
         total=sum(i["qty"] * p.price for i, p in lines),
     )
     if needs_address:
@@ -276,7 +278,7 @@ def api_checkout():
         order.zip_code = form["zip"][:20]
     for i, p in lines:
         order.items.append(OrderItem(
-            product_id=p.id, product_name=p.name, size=i["size"], price=p.price, qty=i["qty"],
+            product_id=p.id, product_name=p.name, size=i["size"], price=p.price, qty=i["qty"], currency=p.currency,
             printful_variant_id=p.printful_map.get(i["size"]) if p.is_printful else None,
         ))
     db.session.add(order)

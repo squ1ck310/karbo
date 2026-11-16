@@ -26,7 +26,7 @@
           {% if p.main_image %}{{ product_media(p) }}{% else %}<span class="ph-k" aria-hidden="true">K</span>{% endif %}
         </div>
         <b>{{ p.name }}</b>
-        <i>{{ format_price(p.price) }}</i>
+        <i>{{ format_price(p.price, p.currency) }}</i>
       </button>
     {% else %}
       <p class="empty">У цій категорії поки порожньо.</p>

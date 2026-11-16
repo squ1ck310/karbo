@@ -10,7 +10,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, s
 from images import ImageError, process_image
 from remote_images import RemoteImageError, inspect_remote_image, normalize_url
 from models import ORDER_STATUSES, Order, OrderItem, Product, ProductImage, db
-from products import CATEGORIES, CATEGORY_IDS, CATEGORY_NAMES, SHAPES
+from products import CATEGORIES, CATEGORY_IDS, CATEGORY_NAMES, CURRENCIES, SHAPES
 import printful
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -114,6 +114,9 @@ def fill_product(p, form):
     p.color = form.get("color", "#FFFFFF")
     p.bg = form.get("bg", "#ECE6F5")
     p.is_active = form.get("is_active") == "on"
+    p.currency = form.get("currency", "UAH")
+    if p.currency not in CURRENCIES:
+        errors.append("Оберіть валюту")
     try:
         p.price = int(form.get("price", ""))
         if p.price <= 0:
@@ -270,7 +273,9 @@ def printful_sync():
                 p = Product(
                     name=data["name"][:120], category=data["category"], shape=data["shape"],
                     color="#FFFFFF", bg="#ECE6F5", desc="", badge="", is_active=False,
-                    price=round(data["price"]) if data["currency"] == "UAH" else 0,
+                    # Ціну й валюту беремо з Printful, якщо валюта з нашого списку
+                    price=round(data["price"]) if data["currency"] in CURRENCIES else 0,
+                    currency=data["currency"] if data["currency"] in CURRENCIES else "UAH",
                     fulfillment="printful", printful_id=data["id"],
                 )
                 db.session.add(p)
@@ -299,7 +304,7 @@ def printful_sync():
         msg += f", приховано (зникли з Printful) {hidden}"
     flash(msg)
     if created:
-        flash("Нові товари поки приховані: вкажи ціну в гривнях і постав галочку «Показувати на сайті»")
+        flash("Нові товари поки приховані: перевір ціну й валюту і постав галочку «Показувати на сайті»")
     return redirect(url_for("admin.products"))
 
 

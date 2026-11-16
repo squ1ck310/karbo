@@ -68,9 +68,9 @@
     {% endif %}
     <table class="table">
       {% for i in o.items %}
-        <tr><td>{{ i.product_name }}{% if i.printful_variant_id %} <span class="pf-tag">Printful</span>{% endif %}</td><td>{{ i.size }}</td><td>{{ i.qty }} × {{ format_price(i.price) }}</td></tr>
+        <tr><td>{{ i.product_name }}{% if i.printful_variant_id %} <span class="pf-tag">Printful</span>{% endif %}</td><td>{{ i.size }}</td><td>{{ i.qty }} × {{ format_price(i.price, i.currency) }}</td></tr>
       {% endfor %}
-      <tr class="total-row"><td colspan="2">Разом</td><td>{{ format_price(o.total) }}</td></tr>
+      <tr class="total-row"><td colspan="2">Разом</td><td>{{ format_totals(o.totals) }}</td></tr>
     </table>
   </article>
 {% else %}

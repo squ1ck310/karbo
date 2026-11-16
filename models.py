@@ -22,7 +22,8 @@ class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     category = db.Column(db.String(30), nullable=False, index=True)
-    price = db.Column(db.Integer, nullable=False)          # у гривнях
+    price = db.Column(db.Integer, nullable=False)
+    currency = db.Column(db.String(3), default="UAH", nullable=False, server_default="UAH")  # UAH | USD | EUR
     desc = db.Column(db.Text, default="")
     sizes = db.Column(db.String(200), default="")         # "XS,S,M,L"
     badge = db.Column(db.String(30), default="")
@@ -103,6 +104,14 @@ class Order(db.Model):
         return ORDER_STATUSES.get(self.status, self.status)
 
     @property
+    def totals(self):
+        """Суми замовлення по валютах: {"UAH": 990, "USD": 35}"""
+        out = {}
+        for i in self.items:
+            out[i.currency or "UAH"] = out.get(i.currency or "UAH", 0) + i.price * i.qty
+        return out
+
+    @property
     def printful_items(self):
         return [i for i in self.items if i.printful_variant_id]
 
@@ -117,6 +126,7 @@ class OrderItem(db.Model):
     price = db.Column(db.Integer, nullable=False)
     qty = db.Column(db.Integer, nullable=False)
     printful_variant_id = db.Column(db.BigInteger)            # sync_variant_id, якщо товар з Printful
+    currency = db.Column(db.String(3), default="UAH", nullable=False, server_default="UAH")
 
 
 def migrate(engine):

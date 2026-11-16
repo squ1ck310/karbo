@@ -117,3 +117,5 @@ input[type="color"] { padding: 2px; height: 44px; width: 100%; }
 code { background: var(--bg); padding: 1px 6px; border-radius: 6px; }
 .head-actions .btn-ghost { background: var(--surface); border: 1px solid var(--line); }
 .head-actions .btn-ghost:hover:not(:disabled) { border-color: var(--ink); }
+.price-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.price-row select { min-width: 120px; }

@@ -49,8 +49,31 @@ CATEGORY_NAMES = {c["id"]: c["name"] for c in CATEGORIES}
 SHAPES = {"tee": "Футболка", "hoodie": "Худі", "pants": "Штани", "dress": "Сукня", "jacket": "Куртка"}
 
 
-def format_price(value: int) -> str:
-    return f"{value:,}".replace(",", " ") + " ₴"
+CURRENCIES = {"UAH": "₴ грн", "USD": "$ долар", "EUR": "€ євро"}
+
+
+def format_price(value, currency="UAH") -> str:
+    """690 ₴, $35, €30"""
+    num = f"{value or 0:,}".replace(",", " ")
+    if currency == "USD":
+        return f"${num}"
+    if currency == "EUR":
+        return f"€{num}"
+    return f"{num} ₴"
+
+
+def format_totals(totals: dict) -> str:
+    """Суми в різних валютах: {"UAH": 990, "USD": 35} → "990 ₴ + $35". Курсів не рахуємо."""
+    parts = [format_price(v, c) for c, v in totals.items() if v]
+    return " + ".join(parts) or format_price(0)
+
+
+def sum_by_currency(pairs):
+    """[(сума, валюта), ...] → {"UAH": ..., "USD": ...} у порядку появи"""
+    out = {}
+    for amount, cur in pairs:
+        out[cur or "UAH"] = out.get(cur or "UAH", 0) + amount
+    return out
 
 
 def garment_svg(shape: str, color: str) -> Markup:

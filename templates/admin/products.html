@@ -24,7 +24,7 @@
         <td><div class="thumb {{ 'has-photo' if p.main_image }}" style="background: {{ p.bg }}">{{ product_media(p) }}</div></td>
         <td><a href="{{ url_for('admin.product_form', product_id=p.id) }}">{{ p.name }}</a>{% if p.is_printful %} <span class="pf-tag">Printful</span>{% endif %}</td>
         <td>{{ CATEGORY_NAMES.get(p.category, p.category) }}</td>
-        <td>{{ format_price(p.price) }}</td>
+        <td>{{ format_price(p.price, p.currency) }}</td>
         <td>{{ p.size_list|join(', ') }}</td>
         <td>{{ 'Так' if p.is_active else 'Приховано' }}</td>
         <td>
