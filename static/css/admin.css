@@ -127,3 +127,4 @@ code { background: var(--bg); padding: 1px 6px; border-radius: 6px; }
 .pay-bad { background: #FBE4E1; color: #A3291C; }
 .btn-strong { background: var(--ink); color: #fff; border-color: var(--ink); }
 .pf-ids { flex-basis: 100%; margin: -8px 0 0; font-size: 14px; }
+.export-bar { background: var(--surface); border-radius: 18px; padding: 16px 20px; }

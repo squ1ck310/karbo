@@ -1,5 +1,7 @@
 """Що відбувається із замовленням після оплати: позначити оплаченим і відправити товари в Printful."""
 
+import csv
+import io
 import json
 import os
 import re
@@ -40,6 +42,7 @@ def apply_printful_data(p, data):
     p.printful_name = (data.get("name") or "")[:200]
     p.sizes = ",".join(data["variants"])
     p.printful_variants = json.dumps(data["variants"])
+    p.printful_variant_ext = json.dumps(data.get("variant_external") or {})
     p.printful_currency = data["currency"]
 
 
@@ -158,3 +161,71 @@ def mark_expired(order_id):
         order.payment_status = "expired"
         order.status = "cancelled"
     db.session.commit()
+
+
+# ===== CSV для імпорту замовлень у Printful (Orders → Import) =====
+CSV_COLUMNS = [
+    "Order ID", "Product ID", "Variant ID", "Quantity", "Full name", "Company",
+    "Address line 1", "Address line 2", "State/Province/Prefecture", "City", "Country",
+    "Postal/ZIP code", "Phone number",
+    # Запасні колонки: числові ID з API, якщо імпорт не прийме ID з кабінету
+    "Sync product ID (API)", "Sync variant ID (API)",
+]
+NEEDS_STATE = {"US": "США", "CA": "Канади", "JP": "Японії"}
+
+
+def orders_for_export(scope="new", order_id=None):
+    """Замовлення, які можна вивантажити: з товарами Printful, не скасовані, оплачені
+    (або без онлайн-оплати) і ще не створені в Printful. scope="new" — ще не вивантажені в CSV."""
+    q = Order.query.order_by(Order.id).filter(
+        Order.status != "cancelled", db.or_(Order.payment_status.is_(None), Order.payment_status == "paid"))
+    if order_id:
+        q = q.filter(Order.id == order_id)
+    else:
+        q = q.filter(Order.printful_order_id.is_(None))
+        if scope == "new":
+            q = q.filter(Order.printful_exported_at.is_(None))
+    return [o for o in q.all() if o.printful_items]
+
+
+def build_printful_csv(orders):
+    """Повертає (текст CSV, список попереджень). Перед вивантаженням підтягує з Printful актуальні ID."""
+    warnings, done, listing = [], set(), None
+    if printful.is_configured():
+        for o in orders:
+            for item in o.printful_items:
+                p = db.session.get(Product, item.product_id) if item.product_id else None
+                if p is None or p.fulfillment != "printful" or p.id in done:
+                    continue
+                done.add(p.id)
+                try:
+                    data = locate_printful_product(p, listing)
+                except printful.PrintfulError as e:
+                    warnings.append(f"«{p.name}»: не вдалося оновити ID з Printful ({e})")
+                    continue
+                if data is None:
+                    warnings.append(f"«{p.name}»: товару немає в магазині Printful")
+                else:
+                    apply_printful_data(p, data)
+
+    out = io.StringIO()
+    w = csv.writer(out, lineterminator="\r\n")
+    w.writerow(CSV_COLUMNS)
+    for o in orders:
+        if o.country_code in NEEDS_STATE:
+            warnings.append(f"Замовлення №{o.id}: для {NEEDS_STATE[o.country_code]} Printful вимагає штат/провінцію — "
+                            "дописати в колонку State/Province/Prefecture вручну")
+        for item in o.printful_items:
+            p = db.session.get(Product, item.product_id) if item.product_id else None
+            product_ext = (p.printful_external_id if p else None) or ""
+            variant_ext = (p.printful_ext_map.get(item.size) if p else None) or ""
+            sync_vid = (p.printful_map.get(item.size) if p else None) or item.printful_variant_id or ""
+            if not product_ext or not variant_ext:
+                warnings.append(f"Замовлення №{o.id}, «{item.product_name} ({item.size})»: немає Product/Variant ID "
+                                "з кабінету Printful — натисни «Синхронізувати з Printful» і вивантаж ще раз")
+            w.writerow([
+                f"lizka-{o.id}", product_ext, variant_ext, item.qty, o.customer_name, "",
+                o.address or "", "", "", o.city, o.country_code or "", o.zip_code or "", o.phone or "",
+                (p.printful_id if p else "") or "", sync_vid,
+            ])
+    return out.getvalue(), list(dict.fromkeys(warnings))

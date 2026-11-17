@@ -39,6 +39,7 @@ class Product(db.Model):
     printful_external_id = db.Column(db.String(64), index=True)   # External ID у Printful (#6afba329ba5f06)
     printful_name = db.Column(db.String(200))                 # назва в Printful (на сайті її можна змінити)
     printful_variants = db.Column(db.Text)                    # JSON {"M": sync_variant_id, ...}
+    printful_variant_ext = db.Column(db.Text)                 # JSON {"M": External ID варіанта, ...}
     printful_currency = db.Column(db.String(3))
 
     images = db.relationship(
@@ -58,6 +59,13 @@ class Product(db.Model):
     def printful_map(self):
         try:
             return json.loads(self.printful_variants or "{}")
+        except ValueError:
+            return {}
+
+    @property
+    def printful_ext_map(self):
+        try:
+            return json.loads(self.printful_variant_ext or "{}")
         except ValueError:
             return {}
 
@@ -104,6 +112,7 @@ class Order(db.Model):
     printful_order_id = db.Column(db.BigInteger)
     printful_status = db.Column(db.String(30))
     printful_error = db.Column(db.String(300))
+    printful_exported_at = db.Column(db.DateTime(timezone=True))   # коли вивантажено в CSV для імпорту в Printful
 
     items = db.relationship("OrderItem", backref="order", cascade="all, delete-orphan", lazy="joined")
 

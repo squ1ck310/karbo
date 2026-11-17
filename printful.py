@@ -135,12 +135,13 @@ def parse_product(detail):
     variants = [v for v in detail.get("sync_variants", []) if not v.get("is_ignored")]
     parsed = [(v, *variant_size_color(v)) for v in variants]
     multi = len({color for _, _, color in parsed if color}) > 1
-    mapping, prices, previews = {}, [], []
+    mapping, ext_mapping, prices, previews = {}, {}, [], []
     for v, size, color in parsed:
         label = variant_label(size, color, multi)
         if label in mapping:
             continue
         mapping[label] = v["id"]
+        ext_mapping[label] = v.get("external_id")
         try:
             prices.append(float(v.get("retail_price") or 0))
         except ValueError:
@@ -156,6 +157,7 @@ def parse_product(detail):
         "name": sp.get("name") or f"Printful #{sp['id']}",
         "thumbnail": sp.get("thumbnail_url"),
         "variants": mapping,
+        "variant_external": ext_mapping,   # {"M": External ID варіанта, як у кабінеті Printful}
         "currency": (variants[0].get("currency") if variants else None) or "",
         "price": max(prices) if prices else 0,
         "previews": previews[:6],

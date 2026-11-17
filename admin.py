@@ -5,7 +5,9 @@ import json
 import os
 from functools import wraps
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
+from datetime import datetime, timezone
+
+from flask import Blueprint, Response, abort, flash, redirect, render_template, request, session, url_for
 
 from images import ImageError, process_image
 from remote_images import RemoteImageError, inspect_remote_image, normalize_url
@@ -70,7 +72,32 @@ def orders():
         query = query.filter_by(status=status)
     cancelled_count = Order.query.filter_by(status="cancelled").count()
     return render_template("admin/orders.html", orders=query.limit(200).all(), active_status=status,
-                           cancelled_count=cancelled_count)
+                           cancelled_count=cancelled_count,
+                           export_new=len(fulfillment.orders_for_export("new")),
+                           export_all=len(fulfillment.orders_for_export("all")))
+
+
+@admin_bp.post("/printful/export")
+@login_required
+def printful_export():
+    """Таблиця CSV для Printful: Orders → Import. Позначає замовлення як вивантажені."""
+    order_id = request.form.get("order", type=int)
+    scope = "all" if request.form.get("scope") == "all" else "new"
+    orders = fulfillment.orders_for_export(scope, order_id)
+    if not orders:
+        flash("Немає замовлень для вивантаження в Printful")
+        return redirect(url_for("admin.orders"))
+    text, warnings = fulfillment.build_printful_csv(orders)
+    now = datetime.now(timezone.utc)
+    for o in orders:
+        o.printful_exported_at = now
+    db.session.commit()
+    flash(f"Вивантажено в CSV замовлень: {len(orders)} ({', '.join('№' + str(o.id) for o in orders[:20])})")
+    for w in warnings[:15]:
+        flash(w)
+    name = f"printful-orders-{now:%Y%m%d-%H%M}" + (f"-{order_id}" if order_id else "") + ".csv"
+    return Response(text.encode("utf-8"), mimetype="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @admin_bp.post("/orders/purge-cancelled")
