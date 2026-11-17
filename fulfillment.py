@@ -1,12 +1,14 @@
 """Що відбувається із замовленням після оплати: позначити оплаченим і відправити товари в Printful."""
 
+import json
 import os
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 
 import printful
-from models import Order, db
+from models import Order, Product, db
 
 
 def _lock(order_id):
@@ -23,6 +25,43 @@ def auto_confirm():
     return os.environ.get("PRINTFUL_AUTO_CONFIRM", "").lower() in ("1", "true", "yes")
 
 
+def refresh_variant_ids(items):
+    """Перед відправкою підтягує з Printful актуальні ID варіантів за назвою розміру.
+    Printful видає варіантам нові ID, якщо товар там відредагували чи перестворили,
+    і тоді збережений у замовленні ID дає «Sync variant not found»."""
+    fresh = {}   # product.id -> {"M": sync_variant_id}
+    for item in items:
+        p = db.session.get(Product, item.product_id) if item.product_id else None
+        if p is None or not p.printful_id:
+            continue   # товар видалили з сайту — пробуємо зі збереженим ID
+        if p.id not in fresh:
+            try:
+                data = printful.parse_product(printful.get_sync_product(p.printful_id))
+            except printful.PrintfulError as e:
+                raise printful.PrintfulError(
+                    f"«{item.product_name}»: не вдалося знайти товар у Printful ({e}). "
+                    "Можливо, його видалили або токен від іншого магазину") from None
+            fresh[p.id] = data["variants"]
+            # Заодно оновлюємо товар на сайті, як це робить синхронізація
+            p.sizes = ",".join(data["variants"])
+            p.printful_variants = json.dumps(data["variants"])
+            p.printful_currency = data["currency"]
+        vid = fresh[p.id].get(item.size)
+        if vid is None:
+            raise printful.PrintfulError(
+                f"«{item.product_name}», розмір {item.size}: такого варіанта в Printful більше немає. "
+                f"Зараз є: {', '.join(fresh[p.id]) or 'нічого'}")
+        item.printful_variant_id = vid
+
+
+def _name_items(message, items):
+    """«Item 0: …» від Printful → «Футболка (M): …», щоб було видно, який товар."""
+    def repl(m):
+        i = int(m.group(1))
+        return f"«{items[i].product_name} ({items[i].size})»:" if i < len(items) else m.group(0)
+    return re.sub(r"Item (\d+):", repl, message)
+
+
 def send_to_printful(order, confirm=False):
     """Створює замовлення в Printful. Повертає текст для адмінки. Помилку зберігає в order.printful_error."""
     items = order.printful_items
@@ -34,10 +73,12 @@ def send_to_printful(order, confirm=False):
         order.printful_error = "Немає повної адреси для Printful"
         return order.printful_error
     try:
+        refresh_variant_ids(items)
         result = printful.create_order(order, items, confirm=confirm)
     except printful.PrintfulError as e:
-        order.printful_error = str(e)[:300]
-        return f"Не вдалося створити замовлення в Printful: {e}"
+        msg = _name_items(str(e), items)
+        order.printful_error = msg[:300]
+        return f"Не вдалося створити замовлення в Printful: {msg}"
     order.printful_order_id = result.get("id")
     order.printful_status = result.get("status", "pending" if confirm else "draft")
     order.printful_error = None
