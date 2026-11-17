@@ -3,6 +3,9 @@
 {% block content %}
 <div class="admin-head">
   <h1>{{ p.name if p.id else 'Новий товар' }}{% if p.is_printful %} <span class="pf-tag">Printful</span>{% endif %}</h1>
+  {% if p.is_printful %}
+    <p class="muted pf-ids">У Printful: ID {{ p.printful_id or '—' }}{% if p.printful_external_id %}, External ID #{{ p.printful_external_id }}{% endif %}{% if p.printful_name and p.printful_name != p.name %}, назва «{{ p.printful_name }}»{% endif %}</p>
+  {% endif %}
   <a href="{{ url_for('admin.products') }}">До списку товарів</a>
 </div>
 <form method="post" class="panel product-form" enctype="multipart/form-data">

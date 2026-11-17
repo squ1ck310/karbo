@@ -17,7 +17,9 @@ TIMEOUT = 20
 
 
 class PrintfulError(Exception):
-    pass
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status   # HTTP-код відповіді Printful (404 — не знайдено), якщо є
 
 
 def is_configured():
@@ -42,7 +44,7 @@ def _request(method, path, body=None, params=None):
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             payload = json.loads(resp.read().decode() or "{}")
     except urllib.error.HTTPError as e:
-        raise PrintfulError(_error_message(e)) from None
+        raise PrintfulError(_error_message(e), status=e.code) from None
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise PrintfulError(f"Немає зʼєднання з Printful: {e}") from None
     return payload.get("result"), payload.get("paging")
@@ -78,6 +80,19 @@ def list_sync_products():
 def get_sync_product(sync_product_id):
     result, _ = _request("GET", f"/store/products/{sync_product_id}")
     return result
+
+
+def get_sync_product_by_external_id(external_id):
+    """Товар за External ID — той, що в кабінеті Printful виглядає як #6afba329ba5f06."""
+    ext = urllib.parse.quote(str(external_id).lstrip("#"), safe="")
+    result, _ = _request("GET", f"/store/products/@{ext}")
+    return result
+
+
+def store_info():
+    """До якого магазину Printful підключений токен: {"id", "name", "type"}."""
+    result, _ = _request("GET", "/store")
+    return result or {}
 
 
 CATEGORY_KEYWORDS = [
@@ -137,6 +152,7 @@ def parse_product(detail):
     category = guess_category(sp.get("name"), catalog_name)
     return {
         "id": sp["id"],
+        "external_id": sp.get("external_id"),
         "name": sp.get("name") or f"Printful #{sp['id']}",
         "thumbnail": sp.get("thumbnail_url"),
         "variants": mapping,

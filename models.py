@@ -35,7 +35,9 @@ class Product(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     # Printful: "own" — свій склад, "printful" — друкує й відправляє Printful
     fulfillment = db.Column(db.String(10), default="own", nullable=False, server_default="own")
-    printful_id = db.Column(db.Integer, unique=True)          # id товару в магазині Printful (sync product)
+    printful_id = db.Column(db.BigInteger, unique=True)          # id товару в магазині Printful (sync product)
+    printful_external_id = db.Column(db.String(64), index=True)   # External ID у Printful (#6afba329ba5f06)
+    printful_name = db.Column(db.String(200))                 # назва в Printful (на сайті її можна змінити)
     printful_variants = db.Column(db.Text)                    # JSON {"M": sync_variant_id, ...}
     printful_currency = db.Column(db.String(3))
 
@@ -99,7 +101,7 @@ class Order(db.Model):
     payment_status = db.Column(db.String(20))
     stripe_session_id = db.Column(db.String(255), index=True)
     paid_at = db.Column(db.DateTime(timezone=True))
-    printful_order_id = db.Column(db.Integer)
+    printful_order_id = db.Column(db.BigInteger)
     printful_status = db.Column(db.String(30))
     printful_error = db.Column(db.String(300))
 
@@ -169,6 +171,11 @@ def migrate(engine):
     size_col = columns.get("order_item", {}).get("size")
     if is_pg and size_col is not None and (getattr(size_col["type"], "length", None) or 40) < 40:
         statements.append('ALTER TABLE order_item ALTER COLUMN size TYPE VARCHAR(40)')
+    # ID у Printful бувають більші за INTEGER (2,1 млрд) — розширюємо до BIGINT
+    for table, col in (("product", "printful_id"), ("order", "printful_order_id")):
+        c = columns.get(table, {}).get(col)
+        if is_pg and c is not None and c["type"].__class__.__name__.upper() == "INTEGER":
+            statements.append(f"ALTER TABLE {quote(table)} ALTER COLUMN {col} TYPE BIGINT")
 
     if not statements:
         return

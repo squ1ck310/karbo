@@ -25,27 +25,74 @@ def auto_confirm():
     return os.environ.get("PRINTFUL_AUTO_CONFIRM", "").lower() in ("1", "true", "yes")
 
 
+def norm_name(s):
+    return (s or "").strip().casefold()
+
+
+def apply_printful_data(p, data):
+    """Записує в товар сайту дані з Printful: привʼязку, розміри, ID варіантів.
+    Назву, ціну, опис і фото на сайті не чіпає."""
+    if p.printful_id != data["id"]:
+        taken = Product.query.filter(Product.printful_id == data["id"], Product.id != p.id).first()
+        if taken is None:
+            p.printful_id = data["id"]
+    p.printful_external_id = data.get("external_id")
+    p.printful_name = (data.get("name") or "")[:200]
+    p.sizes = ",".join(data["variants"])
+    p.printful_variants = json.dumps(data["variants"])
+    p.printful_currency = data["currency"]
+
+
+def locate_printful_product(p, listing=None):
+    """Шукає товар сайту в Printful: за ID, потім за External ID, потім за назвою.
+    ID змінюється, якщо товар у Printful видалили й створили наново. Повертає parse_product(...) або None."""
+    lookups = [lambda: printful.get_sync_product(p.printful_id)] if p.printful_id else []
+    if p.printful_external_id:
+        lookups.append(lambda: printful.get_sync_product_by_external_id(p.printful_external_id))
+    for lookup in lookups:
+        try:
+            return printful.parse_product(lookup())
+        except printful.PrintfulError as e:
+            if e.status != 404:
+                raise
+    names = {norm_name(p.printful_name), norm_name(p.name)} - {""}
+    if listing is None:
+        listing = printful.list_sync_products()
+    for item in listing:
+        if not item.get("is_ignored") and norm_name(item.get("name")) in names:
+            return printful.parse_product(printful.get_sync_product(item["id"]))
+    return None
+
+
+def _not_found_message(item):
+    msg = (f"«{item.product_name}»: у Printful немає такого товару — ні за ID, ні за External ID, ні за назвою")
+    try:
+        store = printful.store_info()
+        msg += f". Токен підключений до магазину «{store.get('name')}» (ID {store.get('id')}, тип {store.get('type')})"
+    except printful.PrintfulError:
+        pass
+    return msg + ". Перевір, що товар лежить саме в цьому магазині"
+
+
 def refresh_variant_ids(items):
     """Перед відправкою підтягує з Printful актуальні ID варіантів за назвою розміру.
-    Printful видає варіантам нові ID, якщо товар там відредагували чи перестворили,
+    Printful видає нові ID, якщо товар там відредагували чи перестворили,
     і тоді збережений у замовленні ID дає «Sync variant not found»."""
-    fresh = {}   # product.id -> {"M": sync_variant_id}
+    fresh = {}       # product.id -> {"M": sync_variant_id}
+    listing = None   # список товарів Printful, тягнемо лише якщо знадобиться
     for item in items:
         p = db.session.get(Product, item.product_id) if item.product_id else None
-        if p is None or not p.printful_id:
+        if p is None or p.fulfillment != "printful":
             continue   # товар видалили з сайту — пробуємо зі збереженим ID
         if p.id not in fresh:
             try:
-                data = printful.parse_product(printful.get_sync_product(p.printful_id))
+                data = locate_printful_product(p, listing)
             except printful.PrintfulError as e:
-                raise printful.PrintfulError(
-                    f"«{item.product_name}»: не вдалося знайти товар у Printful ({e}). "
-                    "Можливо, його видалили або токен від іншого магазину") from None
+                raise printful.PrintfulError(f"«{item.product_name}»: {e}", status=e.status) from None
+            if data is None:
+                raise printful.PrintfulError(_not_found_message(item))
+            apply_printful_data(p, data)
             fresh[p.id] = data["variants"]
-            # Заодно оновлюємо товар на сайті, як це робить синхронізація
-            p.sizes = ",".join(data["variants"])
-            p.printful_variants = json.dumps(data["variants"])
-            p.printful_currency = data["currency"]
         vid = fresh[p.id].get(item.size)
         if vid is None:
             raise printful.PrintfulError(

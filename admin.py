@@ -260,17 +260,34 @@ def printful_sync():
     """Підтягує товари з магазину Printful. Нові товари створюються прихованими,
     щоб ти перевірив ціну в гривнях перед показом на сайті."""
     try:
-        items = printful.list_sync_products()
-        created = updated = 0
-        seen = set()
+        items = [i for i in printful.list_sync_products() if not i.get("is_ignored")]
+        current_ids = {i["id"] for i in items}
+        created = updated = relinked = 0
+        seen, matched = set(), set()
         for item in items:
-            if item.get("is_ignored"):
-                continue
             data = printful.parse_product(printful.get_sync_product(item["id"]))
             if not data["variants"]:
                 continue
             seen.add(data["id"])
             p = Product.query.filter_by(printful_id=data["id"]).first()
+            if p is None and data.get("external_id"):
+                p = Product.query.filter_by(printful_external_id=data["external_id"]).first()
+            if p is None:
+                # Товар у Printful перестворили (новий ID) — знаходимо старий товар сайту за назвою,
+                # щоб не плодити дубль і не губити ціну, фото та старі замовлення
+                stale = Product.query.filter(
+                    Product.fulfillment == "printful",
+                    db.or_(Product.printful_id.is_(None), Product.printful_id.notin_(current_ids)),
+                ).all()
+                want = fulfillment.norm_name(data["name"])
+                p = next((c for c in stale if c.id not in matched and want in
+                          {fulfillment.norm_name(c.printful_name), fulfillment.norm_name(c.name)}), None)
+                if p is not None:
+                    relinked += 1
+            elif p.printful_id == data["id"]:
+                updated += 1
+            else:
+                relinked += 1
             if p is None:
                 p = Product(
                     name=data["name"][:120], category=data["category"], shape=data["shape"],
@@ -285,12 +302,10 @@ def printful_sync():
                     if url:
                         p.images.append(ProductImage(url=url, size=0, position=pos))
                 created += 1
-            else:
-                updated += 1
-            # Розміри й відповідність варіантам оновлюємо завжди; назву, ціну, опис — не чіпаємо
-            p.sizes = ",".join(data["variants"])
-            p.printful_variants = json.dumps(data["variants"])
-            p.printful_currency = data["currency"]
+            # Привʼязку, розміри й ID варіантів оновлюємо завжди; назву, ціну, опис — не чіпаємо
+            fulfillment.apply_printful_data(p, data)
+            db.session.flush()
+            matched.add(p.id)
         # Товари, яких у Printful більше немає, ховаємо з сайту
         gone = Product.query.filter(Product.fulfillment == "printful", Product.is_active.is_(True))
         if seen:
@@ -302,6 +317,8 @@ def printful_sync():
         flash(str(e))
         return redirect(url_for("admin.products"))
     msg = f"Синхронізовано з Printful: нових {created}, оновлено {updated}"
+    if relinked:
+        msg += f", заново привʼязано (змінився ID у Printful) {relinked}"
     if hidden:
         msg += f", приховано (зникли з Printful) {hidden}"
     flash(msg)
