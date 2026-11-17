@@ -82,7 +82,7 @@ Render прочитає `render.yaml` і створить:
 3. Оплачене замовлення → статус «Підтверджене», товари Printful автоматично йдуть у Printful:
    - за замовчуванням як **чернетка** — підтверджуєш кнопкою в адмінці;
    - з `PRINTFUL_AUTO_CONFIRM=1` — одразу в друк.
-4. Неоплачене за годину замовлення скасовується (подія `checkout.session.expired`).
+4. Неоплачене за 24 години замовлення скасовується (подія `checkout.session.expired`). Подробиці налаштування Stripe — у STRIPE_INTEGRATION_TODO.md.
 
 Змінні: `STRIPE_SECRET_KEY` (sk_test_/sk_live_), `STRIPE_WEBHOOK_SECRET` (whsec_),
 `PRINTFUL_AUTO_CONFIRM` (необов'язково). В одному платежі — лише товари в одній валюті.

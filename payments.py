@@ -7,12 +7,10 @@
 
 import json
 import os
-import time
 
 import stripe
 
 # Stripe приймає суму в найменших одиницях (центи, пенси, копійки)
-CHECKOUT_TTL = 60 * 60   # сесія оплати живе 1 годину (мінімум у Stripe — 30 хв)
 
 
 class PaymentError(Exception):
@@ -46,13 +44,33 @@ def create_checkout(order, lines, success_url, cancel_url):
         } for name, price, qty in lines],
         "success_url": success_url,
         "cancel_url": cancel_url,
+        # Звʼязок оплати із замовленням на сайті — за ним вебхук знаходить замовлення. Не прибирати.
         "client_reference_id": str(order.id),
         "metadata": {"order_id": str(order.id)},
-        "payment_intent_data": {"metadata": {"order_id": str(order.id)}},
-        "expires_at": int(time.time()) + CHECKOUT_TTL,
+        # ===== Налаштування з Stripe Checkout Studio (див. STRIPE_INTEGRATION_TODO.md) =====
+        # "hosted_page" — назва цього режиму в API 2026-10-28, на якому працює stripe-python 17
+        "ui_mode": "hosted_page",
+        "billing_address_collection": "auto",
+        "phone_number_collection": {"enabled": False},
+        "automatic_tax": {"enabled": True},
+        "allow_promotion_codes": True,
+        # payment_method_collection не передаємо: він лише для mode="subscription"
+        "submit_type": "auto",
+        "shipping_address_collection": {"allowed_countries": [
+            "AD", "AL", "AT", "AX", "BA", "BE", "BG", "BY", "CH", "CZ", "DE", "DK", "EE", "ES",
+            "FI", "FO", "FR", "GB", "GG", "GI", "GR", "HR", "HU", "IE", "IM", "IS", "IT", "JE",
+            "LI", "LT", "LU", "LV", "MC", "MD", "ME", "MK", "MT", "NL", "NO", "PL", "PT", "RO",
+            "RS", "RU", "SE", "SI", "SJ", "SK", "SM", "UA", "VA",
+        ]},
+        "name_collection": {
+            "individual": {"enabled": True},
+            "business": {"enabled": True, "optional": True},
+        },
+        "payment_method_options": {"card": {"restrictions": {"brands_blocked": ["discover_global_network"]}}},
+        "saved_payment_method_options": {"payment_method_save": "enabled"},
+        "integration_identifier": "hosted_mobile_app_0001",
+        "origin_context": "mobile_app",
     }
-    if order.email:
-        params["customer_email"] = order.email
     try:
         _setup()
         s = stripe.checkout.Session.create(**params)
