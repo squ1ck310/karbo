@@ -7,9 +7,12 @@ import os
 import re
 import secrets
 
-from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, session
+from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, session, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from admin import admin_bp
+import fulfillment
+import payments
 from models import Order, OrderItem, Product, ProductImage, db, migrate
 from products import CATEGORIES, CURRENCIES, SEED_PRODUCTS, format_price, format_totals, garment_svg, image_url, product_media, sum_by_currency
 
@@ -32,6 +35,8 @@ app.config.update(
 # Render сам ставить змінну RENDER=true — там HTTPS, тож cookie тільки по HTTPS
 if os.environ.get("RENDER"):
     app.config.update(SESSION_COOKIE_SECURE=True, SESSION_COOKIE_SAMESITE="Lax")
+    # Render приймає HTTPS і передає запит далі по HTTP; без цього посилання для Stripe були б http://
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 db.init_app(app)
 app.register_blueprint(admin_bp)
@@ -76,9 +81,13 @@ def csrf_token():
 app.jinja_env.globals["csrf_token"] = csrf_token
 
 
+# Ці адреси викликає не браузер покупця, а сервіси ззовні (у них свій захист — підпис запиту)
+CSRF_EXEMPT = {"/stripe/webhook"}
+
+
 @app.before_request
 def check_csrf():
-    if request.method == "POST":
+    if request.method == "POST" and request.path not in CSRF_EXEMPT:
         sent = request.headers.get("X-CSRF-Token") or request.form.get("csrf")
         if not sent or sent != session.get("csrf"):
             abort(400, "Невірний CSRF-токен. Онови сторінку.")
@@ -265,27 +274,103 @@ def api_checkout():
     if errors:
         return jsonify({"error": "Перевірте поля форми", "fields": errors}), 400
 
+    currencies = {p.currency for _, p in lines}
+    online = payments.is_configured()
+    if online and len(currencies) > 1:
+        return json_error("Оплатити одним платежем можна лише товари в одній валюті. "
+                          "Оформи товари в різних валютах окремими замовленнями")
+
     order = Order(
         customer_name=form["name"][:120], phone=form["phone"][:30], city=form["city"][:80],
         np_branch="" if needs_address else form["branch"][:120], comment=form["comment"][:1000],
         # total — сума, якщо всі товари в одній валюті; для змішаних дивись order.totals
         total=sum(i["qty"] * p.price for i, p in lines),
+        currency=next(iter(currencies)) if len(currencies) == 1 else None,
     )
     if needs_address:
         order.email = form["email"][:120]
         order.country_code = form["country"]
         order.address = form["address"][:200]
         order.zip_code = form["zip"][:20]
+    elif EMAIL_RE.match(form["email"]):
+        order.email = form["email"][:120]
     for i, p in lines:
         order.items.append(OrderItem(
             product_id=p.id, product_name=p.name, size=i["size"], price=p.price, qty=i["qty"], currency=p.currency,
             printful_variant_id=p.printful_map.get(i["size"]) if p.is_printful else None,
         ))
+
+    if not online:
+        # Без Stripe: як раніше — замовлення без оплати на сайті
+        db.session.add(order)
+        db.session.commit()
+        session["cart"] = []
+        return jsonify({"message": f"Замовлення №{order.id} прийнято. Ми зв'яжемося для підтвердження.", "order_id": order.id})
+
+    # Зі Stripe: замовлення чекає оплати, покупця відправляємо на сторінку оплати Stripe.
+    # Кошик не чистимо: якщо покупець передумає й повернеться, товари лишаться.
+    order.status = "pending"
+    order.payment_status = "unpaid"
     db.session.add(order)
     db.session.commit()
+    try:
+        session_id, pay_url = payments.create_checkout(
+            order,
+            [(f"{p.name} ({i['size']})", p.price, i["qty"]) for i, p in lines],
+            success_url=url_for("order_done", order_id=order.id, _external=True) + "?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=url_for("index", payment="cancelled", _external=True) + "#shop",
+        )
+    except payments.PaymentError as e:
+        order.status, order.payment_status = "cancelled", "failed"
+        db.session.commit()
+        app.logger.error("Stripe: %s", e)
+        return json_error("Не вдалося відкрити оплату. Спробуйте ще раз за хвилину", 502)
+    order.stripe_session_id = session_id
+    db.session.commit()
+    return jsonify({"redirect": pay_url, "order_id": order.id})
 
-    session["cart"] = []
-    return jsonify({"message": f"Замовлення №{order.id} прийнято. Ми зателефонуємо для підтвердження.", "order_id": order.id})
+
+@app.get("/order/<int:order_id>/done")
+def order_done(order_id):
+    """Сюди Stripe повертає покупця після оплати."""
+    order = db.session.get(Order, order_id)
+    sid = request.args.get("session_id", "")
+    if not order or not sid or sid != order.stripe_session_id:
+        abort(404)
+    if order.payment_status != "paid":
+        # Вебхук може прийти на кілька секунд пізніше — перевіряємо оплату в Stripe напряму
+        try:
+            if payments.get_session_status(sid) == "paid":
+                order = fulfillment.mark_paid(order.id)
+        except payments.PaymentError as e:
+            app.logger.error("Stripe: %s", e)
+    if order.payment_status == "paid":
+        session["cart"] = []
+    return render_template("order_done.html", order=order, cart_count=sum(i["qty"] for i, _ in cart_lines()))
+
+
+@app.post("/stripe/webhook")
+def stripe_webhook():
+    """Stripe повідомляє про оплату сюди. Адресу треба додати в Stripe → Developers → Webhooks."""
+    try:
+        event = payments.parse_webhook(request.get_data(), request.headers.get("Stripe-Signature"))
+    except payments.PaymentError as e:
+        app.logger.warning("Stripe webhook відхилено: %s", e)
+        return "bad signature", 400
+    obj = event.get("data", {}).get("object", {})
+    order_id = (obj.get("metadata") or {}).get("order_id") or obj.get("client_reference_id")
+    if not order_id or not str(order_id).isdigit():
+        return "ok"
+    order = db.session.get(Order, int(order_id))
+    if order is None or order.stripe_session_id != obj.get("id"):
+        return "ok"
+    kind = event.get("type")
+    if kind in ("checkout.session.completed", "checkout.session.async_payment_succeeded") \
+            and obj.get("payment_status") == "paid":
+        fulfillment.mark_paid(order.id)
+    elif kind in ("checkout.session.expired", "checkout.session.async_payment_failed"):
+        fulfillment.mark_expired(order.id)
+    return "ok"
 
 
 if __name__ == "__main__":

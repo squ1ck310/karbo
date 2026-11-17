@@ -49,7 +49,7 @@ CATEGORY_NAMES = {c["id"]: c["name"] for c in CATEGORIES}
 SHAPES = {"tee": "Футболка", "hoodie": "Худі", "pants": "Штани", "dress": "Сукня", "jacket": "Куртка"}
 
 
-CURRENCIES = {"UAH": "₴ грн", "USD": "$ долар", "EUR": "€ євро"}
+CURRENCIES = {"UAH": "₴ грн", "USD": "$ долар", "EUR": "€ євро", "GBP": "£ фунт"}
 
 
 def format_price(value, currency="UAH") -> str:
@@ -59,6 +59,8 @@ def format_price(value, currency="UAH") -> str:
         return f"${num}"
     if currency == "EUR":
         return f"€{num}"
+    if currency == "GBP":
+        return f"£{num}"
     return f"{num} ₴"
 
 

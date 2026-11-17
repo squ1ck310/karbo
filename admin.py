@@ -12,6 +12,8 @@ from remote_images import RemoteImageError, inspect_remote_image, normalize_url
 from models import ORDER_STATUSES, Order, OrderItem, Product, ProductImage, db
 from products import CATEGORIES, CATEGORY_IDS, CATEGORY_NAMES, CURRENCIES, SHAPES
 import printful
+import fulfillment
+import payments
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -35,7 +37,7 @@ def login_required(view):
 @admin_bp.app_context_processor
 def admin_globals():
     return {"CATEGORY_NAMES": CATEGORY_NAMES, "ORDER_STATUSES": ORDER_STATUSES,
-            "printful_ready": printful.is_configured()}
+            "printful_ready": printful.is_configured(), "stripe_ready": payments.is_configured()}
 
 
 # ===== Вхід / вихід =====
@@ -312,23 +314,33 @@ def printful_sync():
 @login_required
 def order_to_printful(order_id):
     order = db.session.get(Order, order_id) or abort(404)
-    items = order.printful_items
-    if not items:
-        flash(f"У замовленні №{order.id} немає товарів Printful")
-    elif order.printful_order_id:
-        flash(f"Замовлення №{order.id} вже є в Printful")
-    elif not (order.address and order.country_code and order.zip_code):
-        flash(f"У замовленні №{order.id} немає повної адреси для Printful")
+    if order.payment_status in ("unpaid", "expired", "failed"):
+        # Захист: Printful спише гроші з тебе, а покупець ще не заплатив
+        flash(f"Замовлення №{order.id} не оплачене, у Printful його не відправляю")
+    else:
+        flash(fulfillment.send_to_printful(order, confirm=False))
+        db.session.commit()
+    return redirect(request.referrer or url_for("admin.orders"))
+
+
+@admin_bp.post("/orders/<int:order_id>/printful/confirm")
+@login_required
+def order_printful_confirm(order_id):
+    """Підтверджує чернетку в Printful прямо з адмінки: замовлення йде в друк."""
+    order = db.session.get(Order, order_id) or abort(404)
+    if not order.printful_order_id:
+        flash("Спершу створи чернетку в Printful")
+    elif order.payment_status in ("unpaid", "expired", "failed"):
+        flash(f"Замовлення №{order.id} не оплачене, підтверджувати не можна")
     else:
         try:
-            result = printful.create_draft_order(order, items)
-            order.printful_order_id = result.get("id")
-            order.printful_status = result.get("status", "draft")
+            result = printful.confirm_order(order.printful_order_id)
+            order.printful_status = result.get("status", "pending")
             order.printful_error = None
-            flash(f"Чернетку №{order.printful_order_id} створено в Printful. Підтверди її в кабінеті Printful, щоб пішла в друк")
+            flash(f"Замовлення №{order.id} пішло в друк. Printful списав оплату з твого Wallet")
         except printful.PrintfulError as e:
             order.printful_error = str(e)[:300]
-            flash(f"Не вдалося: {e}")
+            flash(f"Не вдалося підтвердити: {e}")
         db.session.commit()
     return redirect(request.referrer or url_for("admin.orders"))
 

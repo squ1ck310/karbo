@@ -10,6 +10,7 @@ from sqlalchemy.orm import deferred
 db = SQLAlchemy()
 
 ORDER_STATUSES = {
+    "pending": "Очікує оплати",
     "new": "Нове",
     "confirmed": "Підтверджене",
     "shipped": "Відправлене",
@@ -93,6 +94,11 @@ class Order(db.Model):
     country_code = db.Column(db.String(2))
     address = db.Column(db.String(200))
     zip_code = db.Column(db.String(20))
+    # Оплата (Stripe). payment_status: None — без онлайн-оплати, unpaid | paid | expired
+    currency = db.Column(db.String(3))
+    payment_status = db.Column(db.String(20))
+    stripe_session_id = db.Column(db.String(255), index=True)
+    paid_at = db.Column(db.DateTime(timezone=True))
     printful_order_id = db.Column(db.Integer)
     printful_status = db.Column(db.String(30))
     printful_error = db.Column(db.String(300))
@@ -102,6 +108,10 @@ class Order(db.Model):
     @property
     def status_name(self):
         return ORDER_STATUSES.get(self.status, self.status)
+
+    @property
+    def is_paid(self):
+        return self.payment_status == "paid"
 
     @property
     def totals(self):

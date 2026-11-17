@@ -149,9 +149,10 @@ def parse_product(detail):
 
 
 # ===== Замовлення =====
-def create_draft_order(order, items):
-    """Створює ЧЕРНЕТКУ замовлення (confirm=false): у друк вона не йде, гроші не списуються,
-    доки ти не підтвердиш її в кабінеті Printful. external_id захищає від дублів."""
+def create_order(order, items, confirm=False):
+    """Створює замовлення в Printful. confirm=False — ЧЕРНЕТКА: у друк не йде, гроші не списуються,
+    доки її не підтвердять. confirm=True — одразу в друк, Printful списує оплату з твого Wallet.
+    external_id захищає від дублів."""
     body = {
         "external_id": f"lizka-{order.id}",
         "recipient": {
@@ -165,7 +166,17 @@ def create_draft_order(order, items):
         },
         "items": [{"sync_variant_id": i.printful_variant_id, "quantity": i.qty} for i in items],
     }
-    result, _ = _request("POST", "/orders", body=body, params={"confirm": "false"})
+    result, _ = _request("POST", "/orders", body=body, params={"confirm": "true" if confirm else "false"})
+    return result
+
+
+def create_draft_order(order, items):
+    return create_order(order, items, confirm=False)
+
+
+def confirm_order(printful_order_id):
+    """Підтверджує чернетку: вона йде в друк, Printful списує оплату."""
+    result, _ = _request("POST", f"/orders/{printful_order_id}/confirm")
     return result
 
 

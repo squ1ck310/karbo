@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Замовлення №{{ order.id }} — Karbo{% endblock %}
+{% block content %}
+<section class="done">
+  {% if order.payment_status == 'paid' %}
+    <h1>Дякуємо!</h1>
+    <p>Замовлення №{{ order.id }} оплачено{% if order.email %}. Підтвердження й трек-номер прийдуть на {{ order.email }}{% endif %}.</p>
+    {% if order.printful_items %}
+      <p class="muted">Речі з принтами друкуємо під замовлення, тому відправка займає кілька робочих днів.</p>
+    {% endif %}
+  {% else %}
+    <h1>Оплата обробляється</h1>
+    <p>Замовлення №{{ order.id }} створено, чекаємо підтвердження оплати від банку. Зазвичай це кілька секунд, онови сторінку.</p>
+  {% endif %}
+  <table class="done-items">
+    {% for i in order.items %}
+      <tr><td>{{ i.product_name }} ({{ i.size }})</td><td>{{ i.qty }} × {{ format_price(i.price, i.currency) }}</td></tr>
+    {% endfor %}
+    <tr class="done-total"><td>Разом</td><td>{{ format_totals(order.totals) }}</td></tr>
+  </table>
+  <a class="btn" href="{{ url_for('index') }}#shop">Повернутися в магазин</a>
+</section>
+{% endblock %}

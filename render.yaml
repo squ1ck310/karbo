@@ -15,6 +15,10 @@ services:
         sync: false          # Render попросить ввести пароль вручну
       - key: PRINTFUL_TOKEN
         sync: false          # Private Token з developers.printful.com
+      - key: STRIPE_SECRET_KEY
+        sync: false          # sk_test_... / sk_live_...
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false          # whsec_... з Stripe → Developers → Webhooks
       - key: DATABASE_URL
         fromDatabase:
           name: lizka-db

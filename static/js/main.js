@@ -169,17 +169,24 @@ async function submitOrder() {
   try {
     const data = Object.fromEntries(new FormData($("#checkoutForm")));
     const res = await api("/api/checkout", data);
+    if (res.redirect) {            // оплата через Stripe: йдемо на сторінку оплати
+      btn.textContent = "Переходимо до оплати…";
+      btn.dataset.redirecting = "1";   // не даємо натиснути вдруге й створити друге замовлення
+      window.location.href = res.redirect;
+      return;
+    }
     showFieldErrors();
     $("#checkoutForm").reset();
     $("#checkoutDone").innerHTML = `<h4>Дякуємо!</h4><p>${esc(res.message)}</p>`;
     renderCart(await api("/api/cart"));
     setStep("done");
   } catch (err) {
+    btn.disabled = false;
     setStep("form");
     showFieldErrors(err.fields);
     showToast(err.message);
   } finally {
-    btn.disabled = false;
+    if (!btn.dataset.redirecting) btn.disabled = false;
   }
 }
 
@@ -197,4 +204,10 @@ function showToast(text) {
   t.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+// Покупець закрив сторінку оплати Stripe — кошик лишився, просто кажемо про це
+if (new URLSearchParams(location.search).get("payment") === "cancelled") {
+  showToast("Оплату скасовано. Товари лишились у кошику");
+  history.replaceState(null, "", location.pathname + location.hash);
 }

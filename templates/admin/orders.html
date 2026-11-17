@@ -27,7 +27,11 @@
   <article class="panel order status-{{ o.status }}">
     <div class="order-top">
       <div>
-        <h2>№{{ o.id }} <span class="muted">{{ o.created_at.strftime('%d.%m.%Y %H:%M') }} UTC</span></h2>
+        <h2>№{{ o.id }} <span class="muted">{{ o.created_at.strftime('%d.%m.%Y %H:%M') }} UTC</span>
+          {% if o.payment_status == 'paid' %}<span class="pay-tag pay-ok">Оплачено</span>
+          {% elif o.payment_status == 'unpaid' %}<span class="pay-tag pay-wait">Чекає оплати</span>
+          {% elif o.payment_status in ('expired', 'failed') %}<span class="pay-tag pay-bad">Не оплачено</span>{% endif %}
+        </h2>
         <p><strong>{{ o.customer_name }}</strong>, <a href="tel:{{ o.phone }}">{{ o.phone }}</a></p>
         {% if o.address %}
           <p>{{ COUNTRIES.get(o.country_code, o.country_code) }}, {{ o.city }}, {{ o.address }}, {{ o.zip_code }}</p>
@@ -50,12 +54,21 @@
     {% if o.printful_items %}
       <div class="pf-box">
         <span class="pf-tag">Printful</span>
+        {% set unpaid = o.payment_status in ('unpaid', 'expired', 'failed') %}
         {% if o.printful_order_id %}
           <span>Замовлення в Printful №{{ o.printful_order_id }}, статус: <strong>{{ o.printful_status or '—' }}</strong></span>
+          {% if o.printful_status == 'draft' and not unpaid %}
+            <form method="post" action="{{ url_for('admin.order_printful_confirm', order_id=o.id) }}">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <button class="btn-small btn-ghost-sm btn-strong">Підтвердити й відправити в друк</button>
+            </form>
+          {% endif %}
           <form method="post" action="{{ url_for('admin.order_printful_refresh', order_id=o.id) }}">
             <input type="hidden" name="csrf" value="{{ csrf_token() }}">
             <button class="btn-small btn-ghost-sm">Оновити статус</button>
           </form>
+        {% elif unpaid %}
+          <span class="muted">Відправимо в Printful після оплати.</span>
         {% else %}
           <span class="muted">Ще не відправлено в Printful.</span>
           <form method="post" action="{{ url_for('admin.order_to_printful', order_id=o.id) }}">
